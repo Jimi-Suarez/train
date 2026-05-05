@@ -748,7 +748,6 @@ function completeLift() {
   const liftSt = store.getLift(lift.id);
   const score  = liftScore(s.currentSets, lift);
   const maxS   = maxLiftScore(lift);
-  const isMax  = score === maxS;
 
   const currentRepsArray = s.currentSets.map(set => set.reps);
   const prevLastReps     = liftSt ? liftSt.lastReps : null;
@@ -773,7 +772,6 @@ function completeLift() {
   const session      = store.getSession(todayDate) || {};
   const sessionLifts = { ...(session.lifts || {}) };
   sessionLifts[lift.id] = entry;
-  console.log('[completeLift] sessionLifts:', JSON.stringify(sessionLifts));
   store.setSession(todayDate, { lifts: sessionLifts });
 
   // Update consecutiveTopOfRange (frozen during deload)
@@ -782,28 +780,11 @@ function completeLift() {
     newConsec = allAtMax ? newConsec + 1 : 0;
   }
 
-  // Legacy progression (kept through Phase 6)
-  let newStreak = liftSt ? (liftSt.streakAtMax || 0) : 0;
-  if (!s.deload) {
-    if (isMax) newStreak = Math.min(2, newStreak + 1);
-    else newStreak = 0;
-  }
-  const levelingUp = newStreak >= 2 && liftSt && !s.deload;
-  let newWeight = liftSt ? liftSt.weight : s.currentWeight;
-  let newLevel  = liftSt ? liftSt.level  : 1;
-  if (levelingUp) {
-    newWeight += lift.increment;
-    newLevel++;
-    newStreak = 0;
-  }
-
   const history = liftSt ? [...(liftSt.history || [])] : [];
   history.push(entry);
 
   store.setLift(lift.id, {
-    weight: newWeight,
-    level: newLevel,
-    streakAtMax: newStreak,
+    weight: liftSt ? liftSt.weight : s.currentWeight,
     lastSession: entry,
     history,
     lastReps: currentRepsArray,
@@ -985,7 +966,6 @@ function finishSession() {
 function renderSummary() {
   const todayDate  = time.today();
   const session    = store.getSession(todayDate) || {};
-  console.log('[renderSummary] session.lifts:', JSON.stringify(session.lifts));
   const sessionDef = SESSIONS[s.sessionType];
 
   const STATE_CFG = {

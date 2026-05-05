@@ -126,8 +126,6 @@ export function seedLiftWeights() {
   // Force-correct pullup to bodyweight regardless of existing value
   s.lifts['pullup'] = {
     weight: 0,
-    level: s.lifts['pullup']?.level || 1,
-    streakAtMax: s.lifts['pullup']?.streakAtMax || 0,
     lastSession: s.lifts['pullup']?.lastSession || null,
     history: s.lifts['pullup']?.history || [],
   };
@@ -135,7 +133,7 @@ export function seedLiftWeights() {
 
   for (const [id, weight] of Object.entries(WEIGHTS)) {
     if (!s.lifts[id]) {
-      s.lifts[id] = { weight, level: 1, streakAtMax: 0, lastSession: null, history: [] };
+      s.lifts[id] = { weight, lastSession: null, history: [] };
       changed = true;
     }
   }
