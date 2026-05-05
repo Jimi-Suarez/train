@@ -17,6 +17,7 @@ const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function sessionCard(dow, todayDate, sessions) {
+  console.log('[sessionCard] date:', todayDate, 'session:', sessions[todayDate]);
   const session = SESSIONS[DAY_SESSION[dow]];
   const isStarted = sessions[todayDate] && sessions[todayDate].startedAt;
   const isCompleted = sessions[todayDate] && sessions[todayDate].completedAt;
