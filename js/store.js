@@ -87,10 +87,10 @@ export function seedFirstSession() {
   };
 
   if (!s.lifts['squat']) {
-    s.lifts['squat'] = { weight: 95, level: 1, streakAtMax: 0, lastSession: squatEntry, history: [squatEntry] };
+    s.lifts['squat'] = { weight: 95, lastSession: squatEntry, history: [squatEntry] };
   }
   if (!s.lifts['standing-press']) {
-    s.lifts['standing-press'] = { weight: 45, level: 1, streakAtMax: 0, lastSession: ohpEntry, history: [ohpEntry] };
+    s.lifts['standing-press'] = { weight: 45, lastSession: ohpEntry, history: [ohpEntry] };
   }
 
   save();
@@ -195,10 +195,6 @@ export function migrateToLastReps() {
 
   s.settings.migratedToLastReps = true;
   save();
-
-  console.log('[migration] lift baselines set:', Object.fromEntries(
-    Object.entries(s.lifts).map(([id, l]) => [id, l.lastReps])
-  ));
 }
 
 // --- Lifts ---
@@ -216,7 +212,7 @@ export function setLift(liftId, data) {
 export function initLift(liftId, weight) {
   const s = getState();
   if (!s.lifts[liftId]) {
-    s.lifts[liftId] = { weight, level: 1, streakAtMax: 0, lastSession: null, history: [] };
+    s.lifts[liftId] = { weight, lastSession: null, history: [] };
     save();
   }
 }

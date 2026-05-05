@@ -1,7 +1,7 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
 import { SESSIONS, DAY_SESSION, DEFAULT_WEIGHTS, SUBSTITUTIONS, warmupSets, liftById } from '../programme.js';
-import { setPoints, liftScore, maxLiftScore, isLiftMax, shouldLevelUp, applyDeload, sumReps, sessionState, hitTopOfRangeAllSets, shouldSuggestDeload } from '../scoring.js';
+import { applyDeload, sumReps, sessionState, hitTopOfRangeAllSets, shouldSuggestDeload } from '../scoring.js';
 
 const MOBILITY_PHASES = [
   { name: '90/90 Hip Flow',           instruction: 'Rotate between positions',              seconds: 90 },
@@ -644,8 +644,7 @@ function bindLiftEvents() {
 
 function logSet() {
   const lift = currentLift();
-  const pts  = setPoints(s.currentReps, lift);
-  s.currentSets.push({ weight: s.currentWeight, reps: s.currentReps, increment: lift.increment, points: pts });
+  s.currentSets.push({ weight: s.currentWeight, reps: s.currentReps, increment: lift.increment });
 
   if (s.currentSets.length >= lift.sets) {
     completeLift();
@@ -746,9 +745,6 @@ function completeLift() {
   cancelRaf();
   const lift   = currentLift();
   const liftSt = store.getLift(lift.id);
-  const score  = liftScore(s.currentSets, lift);
-  const maxS   = maxLiftScore(lift);
-
   const currentRepsArray = s.currentSets.map(set => set.reps);
   const prevLastReps     = liftSt ? liftSt.lastReps : null;
   const state            = sessionState(currentRepsArray, prevLastReps);
@@ -758,8 +754,6 @@ function completeLift() {
   const entry = {
     date: time.today(),
     sets: s.currentSets.slice(),
-    score,
-    max: maxS,
     deload: s.deload,
     warmupSkipped: s.warmupIndex === 0 && s.phase !== 'warmup',
     weight: s.currentWeight,
