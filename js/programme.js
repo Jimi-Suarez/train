@@ -19,7 +19,7 @@ export const SESSIONS = {
     note: 'A strong back pulls posture up.',
     lifts: [
       { id: 'pullup',      name: 'Pull-ups / Lat Pulldown',  sets: 4, repsMin: 6,  repsMax: 10, increment: 2.5, kpi: true, firstLift: true, bodyweight: true, restSeconds: 120, note: 'Pull-ups: max reps, add weight when easy. Pulldown: 4 challenging sets. Full hang at bottom.' },
-      { id: 'cable-row',   name: 'Seated Cable Row',          sets: 3, repsMin: 10, repsMax: 12, increment: 2.5,                            restSeconds: 120, note: 'Squeeze shoulder blades at the top. Don\'t rock back.' },
+      { id: 'cable-row',   name: 'Seated Cable Row',          sets: 3, repsMin: 10, repsMax: 12, increment: 10,                             restSeconds: 120, note: 'Squeeze shoulder blades at the top. Don\'t rock back.' },
       { id: 'db-row',      name: 'Single-Arm DB Row',         sets: 3, repsMin: 8,  repsMax: 10, increment: 2.5,                            restSeconds: 120, note: 'Brace on bench. Pull elbow to hip, not shoulder.' },
       { id: 'face-pull',   name: 'Face Pulls',                sets: 3, repsMin: 12, repsMax: 15, increment: 1,                             restSeconds: 90,  note: 'Shoulder health essential. Pull to forehead, elbows high.' },
       { id: 'bicep-curl',  name: 'Bicep Curl (machine/cable)', sets: 3, repsMin: 10, repsMax: 12, increment: 2.5,                           restSeconds: 90,  note: 'No swinging. 3 seconds down. Supinate at the top.' },
