@@ -2,7 +2,7 @@ import * as store from '../store.js';
 import * as time from '../time.js';
 import * as nutrition from '../nutrition.js';
 import { SESSIONS, KPI_LIFTS, DAY_SESSION } from '../programme.js';
-import { weeklyScore } from '../scoring.js';
+import { sumReps } from '../scoring.js';
 
 const KPI_NAMES = {
   'incline-bb': 'Incline Press',
@@ -75,25 +75,41 @@ function sessionCard(dow, todayDate, sessions) {
     </div>`;
 }
 
+const STATE_BADGE = {
+  win:      { label: 'WIN',      color: '#22c55e' },
+  hold:     { label: 'HELD',     color: 'var(--lime)' },
+  miss:     { label: 'MISS',     color: 'var(--amber)' },
+  baseline: { label: 'BASELINE', color: 'var(--text2)' },
+};
+
+function resultBadge(stateVal) {
+  const cfg = stateVal ? STATE_BADGE[stateVal] : null;
+  if (!cfg) return '<span style="color:var(--text3)">—</span>';
+  return `<span style="font-size:11px;font-weight:700;color:${cfg.color}">${cfg.label}</span>`;
+}
+
 function bigFourRows(liftStates) {
   return KPI_LIFTS.map(id => {
-    const st = liftStates[id];
-    const streak = st ? (st.streakAtMax || 0) : 0;
-    const dots   = '●'.repeat(streak) + '○'.repeat(2 - streak);
-    const lvl    = st ? st.level : 1;
-    const wt     = st ? st.weight : '—';
-    const wtStr  = wt === 0 ? 'BW' : wt ? `${wt}kg` : '—';
-    const ready  = st && st.streakAtMax >= 2;
+    const st      = liftStates[id];
+    const wt      = st ? st.weight : null;
+    const wtStr   = wt === 0 ? 'BW' : wt != null ? `${wt}kg` : '—';
+    const lastReps = st?.lastReps || null;
+    const repsStr  = lastReps ? lastReps.join(', ') : '—';
+    const total    = sumReps(lastReps);
+    const lastState = st?.lastSession?.state || null;
+    const mission  = lastReps
+      ? `Beat ${total} to win · hit ${total} to hold`
+      : (st ? 'Establish baseline' : '');
     return `
       <div class="big-four-row" data-lift="${id}">
         <div class="big-four-left">
           <div class="big-four-name">${KPI_NAMES[id]}</div>
-          <div class="big-four-sub">${ready ? '⚡ Ready to level up' : ''}</div>
+          <div class="big-four-sub">${mission}</div>
         </div>
         <div class="big-four-right">
+          <span style="font-size:12px;color:var(--text2);min-width:48px;text-align:right">${repsStr}</span>
+          ${resultBadge(lastState)}
           <div class="big-four-weight">${wtStr}</div>
-          <div class="level-badge${ready ? ' level-up-badge' : ''}">L${lvl}</div>
-          <div class="streak-dots">${dots}</div>
         </div>
       </div>`;
   }).join('');
@@ -134,9 +150,6 @@ export function mount(el) {
 
   const { completed, target, combined, wkNum, proteinDisp } = weekProgressHTML(state, todayDate);
 
-  const { start } = time.weekStartEnd();
-  const wkScore = weeklyScore(state.sessions, start, todayDate);
-
   const currentMeal = nutrition.currentMealWindow();
   const dayMeals    = state.meals[todayDate] || {};
 
@@ -159,7 +172,7 @@ export function mount(el) {
         <div class="progress-bar-fill" style="width:${combined}%"></div>
       </div>
       <div class="today-week-meta">
-        ${completed} of ${target} sessions · ${proteinDisp}% protein · ${wkScore} pts this week
+        ${completed} of ${target} sessions · ${proteinDisp}% protein this week
       </div>
 
       ${isSunday ? `
