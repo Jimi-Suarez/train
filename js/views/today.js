@@ -49,7 +49,23 @@ function sessionCard(dow, todayDate, sessions) {
   }
   if (!session) return '';
 
-  const cta = isCompleted ? 'Session complete ✓' : isStarted ? 'Resume session →' : 'Start session →';
+  if (isCompleted) {
+    const lifts = (sessions[todayDate].lifts) || {};
+    let totalScore = 0, totalMax = 0;
+    Object.values(lifts).forEach(entry => {
+      if (entry) { totalScore += entry.score; totalMax += entry.max; }
+    });
+    const scoreStr = totalMax > 0 ? `${totalScore} / ${totalMax}` : '';
+    return `
+      <div class="session-card" id="session-card" data-action="gym">
+        <div class="session-card-icon">${session.icon}</div>
+        <div class="session-card-name">${session.name} Day</div>
+        <div class="session-card-sub">${scoreStr}</div>
+        <div class="session-card-cta" style="color:var(--lime)">Session complete ✓</div>
+      </div>`;
+  }
+
+  const cta = isStarted ? 'Resume session →' : 'Start session →';
   return `
     <div class="session-card" id="session-card" data-action="gym">
       <div class="session-card-icon">${session.icon}</div>
