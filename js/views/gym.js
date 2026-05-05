@@ -662,6 +662,7 @@ function completeLift() {
   const session   = store.getSession(todayDate) || {};
   const sessionLifts = { ...(session.lifts || {}) };
   sessionLifts[lift.id] = entry;
+  console.log('[completeLift] sessionLifts:', JSON.stringify(sessionLifts));
   store.setSession(todayDate, { lifts: sessionLifts });
 
   // Update lift progression
@@ -788,27 +789,31 @@ function finishSession() {
 function renderSummary() {
   const todayDate = time.today();
   const session   = store.getSession(todayDate) || {};
+  console.log('[renderSummary] session.lifts:', JSON.stringify(session.lifts));
   const sessionDef = SESSIONS[s.sessionType];
 
   let totalScore = 0, totalMax = 0;
-  const liftRows = s.lifts.map(lift => {
-    const entry = (session.lifts || {})[lift.id];
-    const score = entry ? entry.score : 0;
-    const maxS  = entry ? entry.max   : maxLiftScore(lift);
-    const liftSt = store.getLift(lift.id);
-    const streak = liftSt ? liftSt.streakAtMax : 0;
-    const dots   = '●'.repeat(streak) + '○'.repeat(2 - streak);
-    const lvlUp  = liftSt && !s.deload && entry && entry.score === entry.max && streak === 0;
-    totalScore += score;
-    totalMax   += maxS;
-    return `
-      <div class="summary-lift-row">
-        <span class="summary-lift-name">${lift.name}</span>
-        <span class="summary-lift-score">${score}/${maxS}</span>
-        <span class="streak-dots" style="font-size:12px">${dots}</span>
-        ${lvlUp ? '<span class="text-amber" style="font-size:12px">⚡</span>' : ''}
-      </div>`;
-  }).join('');
+  const liftRows = Object.entries(session.lifts || {})
+    .filter(([, entry]) => entry !== null)
+    .map(([id, entry]) => {
+      const lift = liftById(id);
+      if (!lift) return '';
+      const score = entry.score;
+      const maxS  = entry.max;
+      const liftSt = store.getLift(id);
+      const streak = liftSt ? liftSt.streakAtMax : 0;
+      const dots   = '●'.repeat(streak) + '○'.repeat(2 - streak);
+      const lvlUp  = liftSt && !s.deload && entry.score === entry.max && streak === 0;
+      totalScore += score;
+      totalMax   += maxS;
+      return `
+        <div class="summary-lift-row">
+          <span class="summary-lift-name">${lift.name}</span>
+          <span class="summary-lift-score">${score}/${maxS}</span>
+          <span class="streak-dots" style="font-size:12px">${dots}</span>
+          ${lvlUp ? '<span class="text-amber" style="font-size:12px">⚡</span>' : ''}
+        </div>`;
+    }).join('');
 
   const pct   = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
   const showDisruption = pct < 50;
