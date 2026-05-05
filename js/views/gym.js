@@ -813,12 +813,6 @@ function renderSummary() {
   const pct   = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
   const showDisruption = pct < 50;
 
-  const { start, end } = time.weekStartEnd();
-  const wkScore = Math.round(Object.values(store.getAllSessions()).filter((_, i) => {
-    const d = Object.keys(store.getAllSessions())[i];
-    return d >= start && d <= todayDate;
-  }).reduce((sum, s) => sum + Object.values(s.lifts || {}).reduce((ss, e) => ss + (e ? e.score : 0), 0), 0));
-
   el_ref.innerHTML = `
     <div class="summary-wrap">
       <div class="gym-phase-label">${sessionDef ? sessionDef.name : 'Session'} Day · Done</div>
