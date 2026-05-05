@@ -82,7 +82,12 @@ function setupRouter() {
 function setupTabBar() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      location.hash = '/' + btn.dataset.tab;
+      const newHash = '#/' + btn.dataset.tab;
+      if (location.hash === newHash) {
+        route();
+      } else {
+        location.hash = '/' + btn.dataset.tab;
+      }
     });
   });
 }
