@@ -127,6 +127,13 @@ function weekProgressHTML(state, todayDate) {
 }
 
 export function mount(el) {
+  const debugBaselines = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(store.getState().lifts).map(([id, l]) => [id, l.lastReps])
+    ),
+    null, 2
+  );
+
   const state    = store.getState();
   const todayDate = time.today();
   const dow      = time.dayOfWeek(todayDate);
@@ -149,6 +156,10 @@ export function mount(el) {
 
   el.innerHTML = `
     <div class="today-wrap">
+      <details style="margin:12px 0;background:var(--surface);border-radius:8px;padding:8px 12px;font-size:11px">
+        <summary style="cursor:pointer;color:var(--text2)">DEBUG: migration baselines</summary>
+        <pre style="white-space:pre-wrap;font-size:10px;color:var(--text2);margin-top:8px">${debugBaselines}</pre>
+      </details>
       <div class="why-hint" id="why-hint">↓ pull for the why</div>
 
       <div class="today-date">${dateLabel}</div>
