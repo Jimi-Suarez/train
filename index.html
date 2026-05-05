@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f0f0f" />
+  <title>Train · Jimi</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div id="app">
+
+    <header id="topbar">
+      <div id="topbar-title">Train</div>
+      <button id="menu-btn" aria-label="Menu">☰</button>
+    </header>
+
+    <main id="view" role="main"></main>
+
+    <nav id="tabbar" aria-label="Navigation">
+      <button class="tab-btn" data-tab="today" aria-label="Today">
+        <span class="tab-icon">◎</span>
+        Today
+      </button>
+      <button class="tab-btn" data-tab="gym" aria-label="Gym">
+        <span class="tab-icon">⤒</span>
+        Gym
+      </button>
+      <button class="tab-btn" data-tab="food" aria-label="Food">
+        <span class="tab-icon">●</span>
+        Food
+      </button>
+      <button class="tab-btn" data-tab="trends" aria-label="Trends">
+        <span class="tab-icon">↗</span>
+        Trends
+      </button>
+      <button class="tab-btn" data-tab="isak" aria-label="ISAK">
+        <span class="tab-icon">◈</span>
+        ISAK
+      </button>
+      <button class="tab-btn" data-tab="levels" aria-label="Levels">
+        <span class="tab-icon">⬆</span>
+        Levels
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Why overlay -->
+  <div id="why-overlay" role="dialog" aria-modal="true" aria-label="The Why">
+    <p class="why-quote">My daughters will look back at photos of me and see a father who took care of himself.</p>
+    <p class="why-body">On every hard morning at 5am, the question is not: do I feel like it.<br>The question is: what do I want my daughters to see.</p>
+    <p class="why-dismiss">Tap anywhere to return</p>
+  </div>
+
+  <!-- Drawer overlay -->
+  <div id="drawer-overlay"></div>
+
+  <!-- Drawer -->
+  <div id="drawer" role="dialog" aria-modal="true" aria-label="Menu">
+    <div class="drawer-handle"></div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">The Why</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);font-style:italic">
+        "My daughters will look back at photos of me and see a father who took care of himself."
+      </p>
+    </div>
+
+    <div class="drawer-section" id="drawer-review-section">
+      <div class="drawer-label">Sunday Review</div>
+      <div id="drawer-review-content">
+        <button class="btn btn-secondary" id="open-review-btn" style="display:none">Open weekly review →</button>
+        <div id="review-status" style="font-size:13px;color:var(--text2)"></div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">Habits</div>
+      <div id="drawer-habits"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">Photo Log</div>
+      <div id="drawer-photo" style="font-size:13px;color:var(--text2);margin-bottom:10px"></div>
+      <label class="btn btn-secondary" style="cursor:pointer">
+        📷 Take / add photo
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" />
+      </label>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">Backup</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-secondary" id="export-btn">Export JSON</button>
+        <label class="btn btn-ghost" style="cursor:pointer">
+          Import JSON
+          <input type="file" id="import-input" accept=".json,application/json" style="display:none" />
+        </label>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <button class="btn btn-danger" id="reset-btn">Wipe all data</button>
+    </div>
+
+  </div>
+
+  <!-- Sunday Review modal -->
+  <div id="review-modal" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);overflow-y:auto;padding:24px 20px 60px">
+    <div style="max-width:480px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <h2 style="font-size:20px;font-weight:700">Weekly Review</h2>
+        <button id="close-review-btn" style="background:none;border:none;color:var(--text2);font-size:22px;width:44px;height:44px">✕</button>
+      </div>
+      <div id="review-form"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "isak": {
+    "2025-04-08": { "weight": 90.5, "waist": 95.0, "fatMass": 23.31, "muscleMass": 34.60, "skinfoldSum": 105, "height": 169 },
+    "2025-07-24": { "weight": 87.8, "waist": 93.3, "fatMass": 21.65, "muscleMass": 34.22, "skinfoldSum": 95,  "height": 169 },
+    "2025-08-29": { "weight": 86.5, "waist": 91.0, "fatMass": 20.99, "muscleMass": 33.93, "skinfoldSum": 91,  "height": 169 },
+    "2025-11-05": { "weight": 90.0, "waist": 90.5, "fatMass": 19.33, "muscleMass": 36.02, "skinfoldSum": 81,  "height": 169 },
+    "2025-12-13": { "weight": 89.0, "waist": 92.0, "fatMass": 19.66, "muscleMass": 35.09, "skinfoldSum": 83,  "height": 169 },
+    "2026-01-17": { "weight": 89.0, "waist": 92.0, "fatMass": 19.66, "muscleMass": 35.09, "skinfoldSum": 83,  "height": 169 },
+    "2026-03-19": { "weight": 88.8, "waist": 89.9, "fatMass": 20.25, "muscleMass": 34.70, "skinfoldSum": 86.5,"height": 169 },
+    "2026-04-28": { "weight": 87.2, "waist": 91.0, "fatMass": 20.33, "muscleMass": 35.88, "skinfoldSum": 87.0,"height": 169 }
+  }
+}
