@@ -496,6 +496,9 @@ function renderLift() {
         <button class="btn btn-primary" id="set-complete-btn" style="font-size:18px;min-height:60px">
           Set complete
         </button>
+        <button class="btn btn-ghost" id="skip-lift-btn-full" style="margin-top:10px">
+          Skip this exercise →
+        </button>
       </div>
 
       <div class="set-footer">
@@ -530,6 +533,9 @@ function bindLiftEvents() {
     skipLift();
   });
 
+  el_ref.querySelector('#skip-lift-btn-full').addEventListener('click', () => {
+    skipLift();
+  });
 }
 
 function logSet() {
