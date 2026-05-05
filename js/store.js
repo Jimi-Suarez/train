@@ -1,4 +1,5 @@
 import { computeRatio } from './isak.js';
+import { liftById } from './programme.js';
 
 const ROOT_KEY = 'train.jimi.v1';
 let state = null;
@@ -150,6 +151,56 @@ export function seedIfEmpty(seedData) {
     }
     save();
   }
+}
+
+export function migrateToLastReps() {
+  const s = getState();
+  if (s.settings.migratedToLastReps) return;
+
+  // All completed sessions, newest first
+  const completedSessions = Object.entries(s.sessions)
+    .filter(([, session]) => session.completedAt)
+    .sort(([a], [b]) => b.localeCompare(a));
+
+  for (const [liftId, liftState] of Object.entries(s.lifts)) {
+    if (!liftState) continue;
+
+    const lift = liftById(liftId);
+    let lastReps = null;
+    let consecutiveTopOfRange = 0;
+
+    // Find most recent completed session that recorded this lift
+    for (const [, session] of completedSessions) {
+      const entry = (session.lifts || {})[liftId];
+      if (entry && Array.isArray(entry.sets) && entry.sets.length > 0) {
+        lastReps = entry.sets.map(set => set.reps);
+        if (lift) {
+          consecutiveTopOfRange = lastReps.every(r => r >= lift.repsMax) ? 1 : 0;
+        }
+        break;
+      }
+    }
+
+    // Mark the first (oldest) history entry as baseline — no prior data existed to compare against
+    const history = (liftState.history || []).map((entry, i) =>
+      i === 0 ? { ...entry, state: 'baseline' } : entry
+    );
+
+    // Keep lastSession in sync if there is only one history entry
+    let lastSession = liftState.lastSession;
+    if (lastSession && history.length === 1) {
+      lastSession = { ...lastSession, state: 'baseline' };
+    }
+
+    s.lifts[liftId] = { ...liftState, lastReps, consecutiveTopOfRange, history, lastSession };
+  }
+
+  s.settings.migratedToLastReps = true;
+  save();
+
+  console.log('[migration] lift baselines set:', Object.fromEntries(
+    Object.entries(s.lifts).map(([id, l]) => [id, l.lastReps])
+  ));
 }
 
 // --- Lifts ---

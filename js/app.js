@@ -36,6 +36,7 @@ async function init() {
 
   store.seedFirstSession();
   store.seedLiftWeights();
+  store.migrateToLastReps();
 
   setupRouter();
   setupTabBar();
