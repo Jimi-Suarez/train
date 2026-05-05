@@ -1,7 +1,7 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
 import { SESSIONS, DAY_SESSION, DEFAULT_WEIGHTS, SUBSTITUTIONS, warmupSets, liftById } from '../programme.js';
-import { setPoints, liftScore, maxLiftScore, isLiftMax, shouldLevelUp, applyDeload } from '../scoring.js';
+import { setPoints, liftScore, maxLiftScore, isLiftMax, shouldLevelUp, applyDeload, sumReps, sessionState, hitTopOfRangeAllSets, shouldSuggestDeload } from '../scoring.js';
 
 const MOBILITY_PHASES = [
   { name: '90/90 Hip Flow',           instruction: 'Rotate between positions',              seconds: 90 },
@@ -161,19 +161,32 @@ function renderPre() {
   const sessionDef = SESSIONS[s.sessionType];
   const liftRows = s.lifts.map(lift => {
     const liftSt = store.getLift(lift.id);
-    let weight   = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
+    let weight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
     if (s.deload) weight = applyDeload(weight);
-    const label  = lift.isTime ? `${lift.repsMin}–${lift.repsMax}s hold` : `${lift.repsMin}–${lift.repsMax} reps`;
+    const weightStr = weight === 0 ? 'BW' : weight + 'kg';
+    const lastReps  = liftSt ? liftSt.lastReps : null;
+    const lastTotal = sumReps(lastReps);
+    const lastLine  = lastReps
+      ? `Last: ${lastReps.join(', ')} · ${lastTotal} reps total`
+      : 'First time at this weight';
+    const missionLine = lastReps
+      ? `Beat ${lastTotal} to win · hit ${lastTotal} to hold`
+      : `Establish baseline (≥${lift.repsMin * lift.sets} reps total)`;
     return `
-      <li class="presession-item">
-        <div>
+      <li class="presession-item" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
           <div class="presession-lift-name">${lift.name}</div>
-          <div class="presession-lift-meta">${lift.sets}×${label}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-weight:700">${weightStr}</span>
+            ${s.deload ? '<span class="deload-badge">DELOAD</span>' : ''}
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-weight:700">${weight === 0 ? 'BW' : weight + 'kg'}</span>
-          ${s.deload ? '<span class="deload-badge">DELOAD</span>' : ''}
-        </div>
+        <div style="font-size:12px;color:var(--text2)">${lastLine}</div>
+        <div style="font-size:12px;color:var(--text3)">${missionLine}</div>
+        <button class="btn btn-ghost btn-sm bump-weight-btn" data-lift-id="${lift.id}"
+                style="width:auto;padding:2px 10px;font-size:11px;min-height:30px;margin-top:2px">
+          Bump weight ↑
+        </button>
       </li>`;
   }).join('');
 
@@ -221,6 +234,13 @@ function renderPre() {
     s.phase = 'mobility';
     s.mobilityIndex = 0;
     render();
+  });
+
+  el_ref.querySelectorAll('.bump-weight-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openBumpWeightSheet(btn.dataset.liftId);
+    });
   });
 }
 
@@ -302,6 +322,56 @@ function pickTimePressedLifts() {
     s.phase = 'mobility';
     s.mobilityIndex = 0;
     render();
+  });
+}
+
+function openBumpWeightSheet(liftId) {
+  const lift = s.lifts.find(l => l.id === liftId);
+  if (!lift) return;
+  const liftSt = store.getLift(liftId);
+  const currentWeight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[liftId] ?? 0;
+  const lastReps  = liftSt ? liftSt.lastReps : null;
+  const lastTotal = sumReps(lastReps);
+  const defaultNew = currentWeight + lift.increment;
+  const minTarget  = lift.repsMin * lift.sets;
+
+  const sheet = document.createElement('div');
+  sheet.className = 'modal-overlay';
+  sheet.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">Bump to heavier weight?</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        Last session: ${lastTotal} reps at ${currentWeight === 0 ? 'BW' : currentWeight + 'kg'}
+      </div>
+      <input class="modal-input" type="number" step="${lift.increment}" id="bump-weight-input" value="${defaultNew}" />
+      <div style="font-size:13px;color:var(--text2);margin:8px 0 20px" id="bump-mission">
+        New mission at ${defaultNew}kg: hit at least ${minTarget} reps total to establish baseline
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="bump-cancel">Cancel</button>
+        <button class="btn btn-primary" id="bump-confirm">Confirm</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(sheet);
+
+  const input   = sheet.querySelector('#bump-weight-input');
+  const mission = sheet.querySelector('#bump-mission');
+
+  input.addEventListener('input', () => {
+    const val = parseFloat(input.value) || defaultNew;
+    mission.textContent = `New mission at ${val}kg: hit at least ${minTarget} reps total to establish baseline`;
+  });
+
+  sheet.querySelector('#bump-cancel').addEventListener('click', () => sheet.remove());
+  sheet.addEventListener('click', e => { if (e.target === sheet) sheet.remove(); });
+
+  sheet.querySelector('#bump-confirm').addEventListener('click', () => {
+    const newWeight = parseFloat(input.value);
+    if (isNaN(newWeight) || newWeight <= 0) return;
+    store.setLift(liftId, { weight: newWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    sheet.remove();
+    renderPre();
   });
 }
 
@@ -452,36 +522,71 @@ function currentLiftWeight() {
   return liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift?.id] ?? 0;
 }
 
+function missionCardHTML(lift, liftSt) {
+  const lastReps  = liftSt ? liftSt.lastReps : null;
+  const lastTotal = sumReps(lastReps);
+  const banked    = sumReps(s.currentSets.map(set => set.reps));
+  const hasSets   = s.currentSets.length > 0;
+
+  let lastLine, missionLine, borderColor, textColor;
+
+  if (!lastReps) {
+    lastLine    = 'First time at this weight';
+    missionLine = `Establish baseline (≥${lift.repsMin * lift.sets} reps total)`;
+    borderColor = 'var(--border)';
+    textColor   = 'var(--text2)';
+  } else if (!hasSets) {
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
+    missionLine = `Mission: beat ${lastTotal} to win · hit ${lastTotal} to hold`;
+    borderColor = 'var(--border)';
+    textColor   = 'var(--text)';
+  } else if (banked > lastTotal) {
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
+    missionLine = `${banked} banked. ✓ WINNING. +${banked - lastTotal} reps.`;
+    borderColor = 'var(--lime)';
+    textColor   = 'var(--lime)';
+  } else if (banked === lastTotal) {
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
+    missionLine = `${banked} banked. ✓ HOLDING. 1+ on next sets to win.`;
+    borderColor = 'var(--amber)';
+    textColor   = 'var(--amber)';
+  } else {
+    const toWin  = lastTotal + 1 - banked;
+    const toHold = lastTotal - banked;
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
+    missionLine = `${banked} banked. Need ${toWin} to win · ${toHold} to hold.`;
+    borderColor = 'var(--border)';
+    textColor   = 'var(--text)';
+  }
+
+  return `
+    <div style="border-left:3px solid ${borderColor};padding:10px 14px;
+                background:var(--surface2);border-radius:0 8px 8px 0;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:4px">${lastLine}</div>
+      <div style="font-size:13px;font-weight:600;color:${textColor}">${missionLine}</div>
+    </div>`;
+}
+
 function renderLift() {
   const lift   = currentLift();
   if (!lift) { finishSession(); return; }
   const liftSt = store.getLift(lift.id);
-  const streak = liftSt ? liftSt.streakAtMax : 0;
-  const streakDots = '●'.repeat(streak) + '○'.repeat(2 - streak);
 
   const setsDone = s.currentSets.length;
-  const setsDots = s.lifts[s.liftIndex] ?
-    Array.from({ length: lift.sets }, (_, i) =>
-      `<div class="set-dot ${i < setsDone ? 'done' : ''}"></div>`
-    ).join('') : '';
-
-  const runningScore = s.currentSets.reduce((sum, set) => sum + setPoints(set.reps, lift), 0);
-  const maxScore     = maxLiftScore(lift);
-  const context      = contextLine(lift, liftSt);
+  const setsDots = Array.from({ length: lift.sets }, (_, i) =>
+    `<div class="set-dot ${i < setsDone ? 'done' : ''}"></div>`
+  ).join('');
 
   const weightDisplay = s.currentWeight === 0 ? 'Bodyweight' : `${s.currentWeight} kg`;
 
   el_ref.innerHTML = `
     <div class="gym-wrap">
       <div class="lift-header">
-        <div>
-          <div class="gym-phase-label">${lift.name}</div>
-          <div style="font-size:13px;color:var(--text2)">Level ${liftSt ? liftSt.level : 1} · <span class="streak-dots">${streakDots}</span></div>
-        </div>
+        <div class="gym-phase-label">${lift.name}</div>
         <div class="skip-link" id="skip-lift-btn">skip lift →</div>
       </div>
 
-      <div class="lift-context">${context}</div>
+      ${missionCardHTML(lift, liftSt)}
 
       <div class="set-input-area">
         <div class="set-label">SET ${setsDone + 1} of ${lift.sets}</div>
@@ -503,7 +608,6 @@ function renderLift() {
 
       <div class="set-footer">
         <div class="set-dots">${setsDots}</div>
-        <div class="set-score-label">Score: ${runningScore} / ${maxScore}</div>
       </div>
 
     </div>`;
@@ -646,7 +750,12 @@ function completeLift() {
   const maxS   = maxLiftScore(lift);
   const isMax  = score === maxS;
 
-  // Build session entry
+  const currentRepsArray = s.currentSets.map(set => set.reps);
+  const prevLastReps     = liftSt ? liftSt.lastReps : null;
+  const state            = sessionState(currentRepsArray, prevLastReps);
+  const allAtMax         = hitTopOfRangeAllSets(currentRepsArray, lift.repsMax);
+
+  // Build session entry — includes state and prevLastReps for renderBetween/Summary
   const entry = {
     date: time.today(),
     sets: s.currentSets.slice(),
@@ -655,43 +764,51 @@ function completeLift() {
     deload: s.deload,
     warmupSkipped: s.warmupIndex === 0 && s.phase !== 'warmup',
     weight: s.currentWeight,
+    state,
+    prevLastReps,
   };
 
-  // Update store: session lifts
-  const todayDate = time.today();
-  const session   = store.getSession(todayDate) || {};
+  // Persist session lift entry
+  const todayDate    = time.today();
+  const session      = store.getSession(todayDate) || {};
   const sessionLifts = { ...(session.lifts || {}) };
   sessionLifts[lift.id] = entry;
   console.log('[completeLift] sessionLifts:', JSON.stringify(sessionLifts));
   store.setSession(todayDate, { lifts: sessionLifts });
 
-  // Update lift progression
+  // Update consecutiveTopOfRange (frozen during deload)
+  let newConsec = liftSt ? (liftSt.consecutiveTopOfRange || 0) : 0;
   if (!s.deload) {
-    let newStreak = liftSt ? (liftSt.streakAtMax || 0) : 0;
+    newConsec = allAtMax ? newConsec + 1 : 0;
+  }
+
+  // Legacy progression (kept through Phase 6)
+  let newStreak = liftSt ? (liftSt.streakAtMax || 0) : 0;
+  if (!s.deload) {
     if (isMax) newStreak = Math.min(2, newStreak + 1);
     else newStreak = 0;
-
-    const levelingUp = newStreak >= 2 && liftSt;
-    let newWeight = liftSt ? liftSt.weight : s.currentWeight;
-    let newLevel  = liftSt ? liftSt.level  : 1;
-
-    if (levelingUp) {
-      newWeight += lift.increment;
-      newLevel++;
-      newStreak = 0;
-    }
-
-    const history = liftSt ? [...(liftSt.history || [])] : [];
-    history.push(entry);
-
-    store.setLift(lift.id, {
-      weight: newWeight,
-      level: newLevel,
-      streakAtMax: newStreak,
-      lastSession: entry,
-      history,
-    });
   }
+  const levelingUp = newStreak >= 2 && liftSt && !s.deload;
+  let newWeight = liftSt ? liftSt.weight : s.currentWeight;
+  let newLevel  = liftSt ? liftSt.level  : 1;
+  if (levelingUp) {
+    newWeight += lift.increment;
+    newLevel++;
+    newStreak = 0;
+  }
+
+  const history = liftSt ? [...(liftSt.history || [])] : [];
+  history.push(entry);
+
+  store.setLift(lift.id, {
+    weight: newWeight,
+    level: newLevel,
+    streakAtMax: newStreak,
+    lastSession: entry,
+    history,
+    lastReps: currentRepsArray,
+    consecutiveTopOfRange: newConsec,
+  });
 
   s.phase = 'between';
   saveGymState();
@@ -699,15 +816,71 @@ function completeLift() {
 }
 
 function renderBetween() {
-  const lift   = currentLift();
-  const liftSt = store.getLift(lift.id);
+  const lift      = currentLift();
+  const liftSt    = store.getLift(lift.id);
   const todayDate = time.today();
   const session   = store.getSession(todayDate) || {};
   const entry     = (session.lifts || {})[lift.id];
-  const score     = entry ? entry.score : 0;
-  const maxS      = entry ? entry.max   : maxLiftScore(lift);
-  const streak    = liftSt ? liftSt.streakAtMax : 0;
-  const dots      = '●'.repeat(streak) + '○'.repeat(2 - streak);
+
+  const currentRepsArray = (entry && entry.sets) ? entry.sets.map(set => set.reps) : [];
+  const prevLastReps     = entry ? entry.prevLastReps : null;
+  const state            = entry ? (entry.state || 'baseline') : 'baseline';
+  const currentTotal     = sumReps(currentRepsArray);
+  const lastTotal        = sumReps(prevLastReps);
+
+  const STATE_CFG = {
+    win:      { badge: '✓ WIN',     color: '#22c55e' },
+    hold:     { badge: '= HELD',    color: 'var(--lime)' },
+    miss:     { badge: '✗ MISSED',  color: 'var(--amber)' },
+    baseline: { badge: 'BASELINE',  color: 'var(--text2)' },
+  };
+  const cfg = STATE_CFG[state] || STATE_CFG.baseline;
+
+  let stateDetail = '';
+  if (state === 'win')           stateDetail = `${lastTotal} → ${currentTotal} (+${currentTotal - lastTotal} reps)`;
+  else if (state === 'hold')     stateDetail = `${currentTotal} reps (matched)`;
+  else if (state === 'miss')     stateDetail = `${lastTotal} → ${currentTotal} (−${lastTotal - currentTotal} reps)`;
+  else                           stateDetail = `${currentTotal} reps logged`;
+
+  // Progression prompts (skipped during deload)
+  const allAtMax    = hitTopOfRangeAllSets(currentRepsArray, lift.repsMax);
+  const belowMin    = shouldSuggestDeload(currentRepsArray, lift.repsMin);
+  const newConsec   = liftSt ? (liftSt.consecutiveTopOfRange || 0) : 0;
+  const entryWeight = entry ? entry.weight : s.currentWeight;
+  const nextWeight  = entryWeight + lift.increment;
+  const prevWeight  = Math.max(0, entryWeight - lift.increment);
+
+  let progressionHTML = '';
+  if (!s.deload) {
+    if (allAtMax && newConsec >= 2) {
+      progressionHTML = `
+        <div style="background:var(--surface2);border:1px solid var(--lime);border-radius:10px;
+                    padding:14px 16px;margin:12px 0">
+          <div style="font-size:14px;margin-bottom:12px">⚡ Two perfect sessions in a row. Graduate to ${nextWeight}kg next session?</div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary btn-sm" id="graduate-btn" style="flex:1">Yes, graduate</button>
+            <button class="btn btn-ghost btn-sm" id="stay-btn" style="flex:1">Stay at ${entryWeight}kg</button>
+          </div>
+        </div>`;
+    } else if (allAtMax && newConsec === 1) {
+      progressionHTML = `
+        <div style="background:var(--surface2);border:1px solid var(--lime);border-radius:10px;
+                    padding:14px 16px;margin:12px 0">
+          <div style="font-size:14px">⚡ Top of range hit. One more session to graduate.</div>
+        </div>`;
+    } else if (belowMin) {
+      progressionHTML = `
+        <div style="background:var(--surface2);border:1px solid var(--amber);border-radius:10px;
+                    padding:14px 16px;margin:12px 0">
+          <div style="font-size:14px;margin-bottom:12px">Some sets fell below ${lift.repsMin} reps. Drop weight next session?</div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-secondary btn-sm" id="drop-btn" style="flex:1">Yes, drop to ${prevWeight}kg</button>
+            <button class="btn btn-ghost btn-sm" id="keep-btn" style="flex:1">Keep trying</button>
+          </div>
+        </div>`;
+    }
+  }
+
   const nextLiftIdx = nextLiftIndex();
   const hasDeferred = s.deferred.length > 0;
 
@@ -727,18 +900,41 @@ function renderBetween() {
     nextBtn = `<button class="btn btn-primary" id="finish-btn">Finish session →</button>`;
   }
 
-  const levelUpLine = (liftSt && liftSt.streakAtMax === 0 && entry && entry.score === entry.max)
-    ? `<div class="level-up-notice">⚡ LEVEL UP NEXT SESSION — ${liftSt.weight + lift.increment}kg</div>`
-    : '';
-
   el_ref.innerHTML = `
     <div class="gym-wrap between-lifts">
       <div class="gym-phase-label">${lift.name} · Done</div>
-      <div class="lift-result-score">${score} / ${maxS} <span class="streak-dots">${dots}</span></div>
-      ${levelUpLine}
-      <div style="height:24px"></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <span style="font-size:20px;font-weight:800;color:${cfg.color}">${cfg.badge}</span>
+        <span style="font-size:14px;color:var(--text2)">${stateDetail}</span>
+      </div>
+      ${progressionHTML}
+      <div style="height:20px"></div>
       ${nextBtn}
     </div>`;
+
+  // Graduation buttons
+  el_ref.querySelector('#graduate-btn')?.addEventListener('click', () => {
+    store.setLift(lift.id, { weight: nextWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    el_ref.querySelector('#graduate-btn').disabled = true;
+    el_ref.querySelector('#stay-btn').disabled = true;
+    el_ref.querySelector('#graduate-btn').textContent = `✓ ${nextWeight}kg set for next session`;
+  });
+  el_ref.querySelector('#stay-btn')?.addEventListener('click', () => {
+    el_ref.querySelector('#graduate-btn').disabled = true;
+    el_ref.querySelector('#stay-btn').disabled = true;
+    el_ref.querySelector('#stay-btn').textContent = '✓ Staying';
+  });
+  el_ref.querySelector('#drop-btn')?.addEventListener('click', () => {
+    store.setLift(lift.id, { weight: prevWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    el_ref.querySelector('#drop-btn').disabled = true;
+    el_ref.querySelector('#keep-btn').disabled = true;
+    el_ref.querySelector('#drop-btn').textContent = `✓ ${prevWeight}kg set for next session`;
+  });
+  el_ref.querySelector('#keep-btn')?.addEventListener('click', () => {
+    el_ref.querySelector('#drop-btn').disabled = true;
+    el_ref.querySelector('#keep-btn').disabled = true;
+    el_ref.querySelector('#keep-btn').textContent = '✓ Keeping';
+  });
 
   el_ref.querySelector('#next-lift-btn')?.addEventListener('click', (e) => {
     startLift(parseInt(e.currentTarget.dataset.index));
@@ -787,44 +983,62 @@ function finishSession() {
 }
 
 function renderSummary() {
-  const todayDate = time.today();
-  const session   = store.getSession(todayDate) || {};
+  const todayDate  = time.today();
+  const session    = store.getSession(todayDate) || {};
   console.log('[renderSummary] session.lifts:', JSON.stringify(session.lifts));
   const sessionDef = SESSIONS[s.sessionType];
 
-  let totalScore = 0, totalMax = 0;
+  const STATE_CFG = {
+    win:      { badge: '✓ WIN',     color: '#22c55e',     border: '#22c55e' },
+    hold:     { badge: '= HELD',    color: 'var(--lime)',  border: 'var(--lime)' },
+    miss:     { badge: '✗ MISSED',  color: 'var(--amber)', border: 'var(--amber)' },
+    baseline: { badge: 'BASELINE',  color: 'var(--text2)', border: 'var(--border)' },
+  };
+
+  let wins = 0, holds = 0, misses = 0, baselines = 0;
+
   const liftRows = Object.entries(session.lifts || {})
     .filter(([, entry]) => entry !== null)
     .map(([id, entry]) => {
       const lift = liftById(id);
       if (!lift) return '';
-      const score = entry.score;
-      const maxS  = entry.max;
-      const liftSt = store.getLift(id);
-      const streak = liftSt ? liftSt.streakAtMax : 0;
-      const dots   = '●'.repeat(streak) + '○'.repeat(2 - streak);
-      const lvlUp  = liftSt && !s.deload && entry.score === entry.max && streak === 0;
-      totalScore += score;
-      totalMax   += maxS;
+      const state    = entry.state || 'baseline';
+      const cfg      = STATE_CFG[state] || STATE_CFG.baseline;
+      const weightStr = entry.weight === 0 ? 'BW' : `${entry.weight}kg`;
+      const currTotal = sumReps((entry.sets || []).map(set => set.reps));
+      const prevTotal = sumReps(entry.prevLastReps);
+      const repLine   = state === 'baseline' ? `${currTotal} reps` : `${prevTotal} → ${currTotal}`;
+
+      if (state === 'win')           wins++;
+      else if (state === 'hold')     holds++;
+      else if (state === 'miss')     misses++;
+      else                           baselines++;
+
       return `
-        <div class="summary-lift-row">
-          <span class="summary-lift-name">${lift.name}</span>
-          <span class="summary-lift-score">${score}/${maxS}</span>
-          <span class="streak-dots" style="font-size:12px">${dots}</span>
-          ${lvlUp ? '<span class="text-amber" style="font-size:12px">⚡</span>' : ''}
+        <div class="summary-lift-row" style="border-left:3px solid ${cfg.border};
+              padding-left:10px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:14px;font-weight:600">
+              ${lift.name} <span style="font-weight:400;color:var(--text2)">${weightStr}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text2)">${repLine}</div>
+          </div>
+          <span style="font-size:13px;font-weight:800;color:${cfg.color}">${cfg.badge}</span>
         </div>`;
     }).join('');
 
-  const pct   = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
-  const showDisruption = pct < 50;
+  const tallyParts = [];
+  if (wins > 0)      tallyParts.push(`Wins: ${wins}`);
+  if (holds > 0)     tallyParts.push(`Held: ${holds}`);
+  if (misses > 0)    tallyParts.push(`Missed: ${misses}`);
+  if (baselines > 0) tallyParts.push(`Baselines: ${baselines}`);
+  const tallyLine    = tallyParts.join(' · ') || '—';
+  const showDisruption = misses > 0;
 
   el_ref.innerHTML = `
     <div class="summary-wrap">
       <div class="gym-phase-label">${sessionDef ? sessionDef.name : 'Session'} Day · Done</div>
-      <div style="font-size:32px;font-weight:700;margin:8px 0">
-        ${totalScore} / ${totalMax}
-        <span style="font-size:18px;color:var(--text2)">(${pct}%)</span>
-      </div>
+      <div style="font-size:18px;font-weight:700;margin:8px 0;color:var(--text2)">${tallyLine}</div>
       <div class="card" style="padding:0 16px;margin-bottom:16px">
         ${liftRows}
       </div>
@@ -843,7 +1057,6 @@ function renderSummary() {
       </div>
     </div>`;
 
-  // Disruption buttons
   el_ref.querySelectorAll('.disruption-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       el_ref.querySelectorAll('.disruption-btn').forEach(b => b.classList.remove('selected'));
@@ -853,7 +1066,7 @@ function renderSummary() {
   });
 
   el_ref.querySelector('#accountability-btn')?.addEventListener('click', () => {
-    const text = `${sessionDef ? sessionDef.name : 'Session'} day done — ${totalScore}/${totalMax}.`;
+    const text = `${sessionDef ? sessionDef.name : 'Session'} day done — ${tallyLine}.`;
     if (navigator.share) navigator.share({ text });
     else alert(text);
   });
@@ -871,26 +1084,6 @@ function renderSummary() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function contextLine(lift, liftSt) {
-  if (!liftSt || !liftSt.lastSession) {
-    return `First time on this lift. Pick a weight you can do for ${lift.repsMin} reps.`;
-  }
-  if (s.deload) {
-    return `Deload day: ${s.currentWeight}kg. Just complete the reps.`;
-  }
-  const last    = liftSt.lastSession;
-  const lastMax = last.score === last.max;
-  const streak  = liftSt.streakAtMax;
-
-  if (streak >= 2) {
-    return `Two perfect sessions. New weight today: ${s.currentWeight}kg. Aim for ${lift.repsMin} reps.`;
-  }
-  if (lastMax) {
-    return `Last time: PERFECT ${last.score}/${last.max}. Hit max again today and you level up.`;
-  }
-  const repsStr = (last.sets || []).map(s => s.reps).join('-');
-  return `Last time: ${last.weight || s.currentWeight}kg · ${repsStr} (${last.score}pt). Same weight — push for ${lift.repsMax}s.`;
-}
 
 function showWeightEdit() {
   const modal = document.createElement('div');
