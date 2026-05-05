@@ -1,15 +1,14 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
 import * as nutrition from '../nutrition.js';
-import { weeklyScore } from '../scoring.js';
 import { SESSIONS, KPI_LIFTS } from '../programme.js';
 
 export function mount(el) {
   const state = store.getState();
   const todayDate = time.today();
 
-  const weeks = buildWeekData(state, todayDate, 12);
-  const disruptions = buildDisruptionData(state);
+  const weeklyTally  = buildWeeklyTally(state);
+  const disruptions  = buildDisruptionData(state);
   const liftProgress = buildLiftProgress(state);
   const nutritionData = buildNutritionData(state, todayDate);
 
@@ -17,12 +16,10 @@ export function mount(el) {
     <div class="trends-wrap">
       <div class="spacer-12"></div>
 
-      <!-- Weekly score chart -->
+      <!-- Weekly tally -->
       <div class="chart-container">
-        <div class="chart-title">Weekly score</div>
-        ${lineChartSVG(weeks.map(w => ({ x: w.weekNum, y: w.score, label: w.weekLabel })), {
-          color: 'var(--lime)', yLabel: 'pts', emptyMsg: 'No sessions yet'
-        })}
+        <div class="chart-title">Weekly tally</div>
+        ${weeklyTallyHTML(weeklyTally)}
       </div>
 
       <!-- KPI lift progression -->
@@ -33,7 +30,7 @@ export function mount(el) {
       <div class="chart-container" style="margin-top:4px">
         <div class="chart-title">Nutrition adherence (%)</div>
         ${lineChartSVG(nutritionData.map(w => ({ x: w.weekNum, y: w.pct, label: w.weekLabel })), {
-          color: 'var(--amber)', yLabel: '%', emptyMsg: 'No meal data yet'
+          color: 'var(--amber)', emptyMsg: 'No meal data yet'
         })}
       </div>
 
@@ -47,21 +44,53 @@ export function mount(el) {
 
 export function unmount() {}
 
-function buildWeekData(state, todayDate, numWeeks) {
-  const weeks = [];
-  let weekEnd = todayDate;
-  for (let i = 0; i < numWeeks; i++) {
-    const { start, end } = time.weekStartEnd(new Date(...weekEnd.split('-').map((v,i) => i===1?Number(v)-1:Number(v))));
-    if (start > todayDate) { weekEnd = time.addDays(start, -1); continue; }
-    const score  = weeklyScore(state.sessions, start, end);
-    const wkNum  = time.weekNumber(state.settings.startedAt);
-    const [, , d] = start.split('-');
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const [, m]  = start.split('-').map(Number);
-    weeks.unshift({ weekLabel: `${d} ${MONTHS[m-1]}`, weekNum: weeks.length, score, start, end });
-    weekEnd = time.addDays(start, -1);
+function buildWeeklyTally(state) {
+  const weekMap = {};
+
+  Object.entries(state.sessions).forEach(([date, session]) => {
+    if (!session.completedAt) return;
+    const [y, m, d] = date.split('-').map(Number);
+    const weekKey = time.isoWeek(new Date(y, m - 1, d));
+
+    if (!weekMap[weekKey]) {
+      weekMap[weekKey] = { weekKey, wins: 0, holds: 0, misses: 0, baselines: 0 };
+    }
+
+    Object.values(session.lifts || {}).forEach(entry => {
+      if (!entry) return;
+      const st = entry.state;
+      if (st === 'win')           weekMap[weekKey].wins++;
+      else if (st === 'hold')     weekMap[weekKey].holds++;
+      else if (st === 'miss')     weekMap[weekKey].misses++;
+      else if (st === 'baseline') weekMap[weekKey].baselines++;
+    });
+  });
+
+  return Object.values(weekMap)
+    .sort((a, b) => b.weekKey.localeCompare(a.weekKey))
+    .slice(0, 4);
+}
+
+function weeklyTallyHTML(weeks) {
+  if (!weeks.length) {
+    return '<div class="text-muted text-sm" style="padding:20px 0;text-align:center">No sessions yet</div>';
   }
-  return weeks;
+  return weeks.map(w => {
+    const wkNum = w.weekKey.split('-W')[1];
+    const parts = [];
+    if (w.wins  > 0) parts.push(`<span style="color:#22c55e">✓ ${w.wins} win${w.wins !== 1 ? 's' : ''}</span>`);
+    if (w.holds > 0) parts.push(`<span style="color:var(--lime)">= ${w.holds} held</span>`);
+    if (w.misses > 0) parts.push(`<span style="color:var(--amber)">✗ ${w.misses} missed</span>`);
+    if (w.baselines > 0) parts.push(`<span style="color:var(--text2)">${w.baselines} baseline${w.baselines !== 1 ? 's' : ''}</span>`);
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="font-weight:700;color:var(--text2);flex-shrink:0;min-width:64px">WEEK ${wkNum}</span>
+        <span style="display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end">
+          ${parts.length ? parts.join('') : '<span style="color:var(--text3)">no lift data</span>'}
+        </span>
+      </div>`;
+  }).join('') + '<div style="height:4px"></div>';
 }
 
 function buildNutritionData(state, todayDate) {
@@ -129,7 +158,6 @@ function liftProgressCard(id, data) {
   const firstWt = history.length ? history[0].weight : lift.weight;
   const lastWt  = lift.weight;
   const delta   = +(lastWt - firstWt).toFixed(1);
-  const weeks   = history.length;
 
   const points = history.map((h, i) => ({ x: i, y: h.weight }));
   if (!points.length) points.push({ x: 0, y: lift.weight });
