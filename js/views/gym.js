@@ -503,7 +503,6 @@ function renderLift() {
         <div class="set-score-label">Score: ${runningScore} / ${maxScore}</div>
       </div>
 
-      <div class="why-link" id="why-lift-link">? Why this lift</div>
     </div>`;
 
   bindLiftEvents();
@@ -531,10 +530,6 @@ function bindLiftEvents() {
     skipLift();
   });
 
-  el_ref.querySelector('#why-lift-link').addEventListener('click', () => {
-    const lift = currentLift();
-    alert(lift ? lift.note : '');
-  });
 }
 
 function logSet() {
