@@ -20,22 +20,58 @@ function defaultState() {
       kcalTarget: 2050,
       accountabilityContact: null,
       startedAt: null,
+      nextSessionIndex: 0,
     },
   };
 }
 
 export function load() {
   try {
-    const raw = localStorage.getItem(ROOT_KEY);
-    state = raw ? JSON.parse(raw) : defaultState();
+    let raw = localStorage.getItem(ROOT_KEY);
+    if (!raw) {
+      const backup = localStorage.getItem(ROOT_KEY + '.backup');
+      if (backup) {
+        console.warn('[store] Main key missing — recovering from backup');
+        localStorage.setItem(ROOT_KEY, backup);
+        raw = backup;
+      }
+    }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const def = defaultState();
+      state = {
+        ...def,
+        ...parsed,
+        settings: { ...def.settings, ...(parsed.settings || {}) },
+      };
+    } else {
+      state = defaultState();
+    }
   } catch {
     state = defaultState();
+  }
+  if (state.settings.nextSessionIndex === undefined) {
+    state.settings.nextSessionIndex = 2;
+    save();
   }
   return state;
 }
 
 function save() {
-  localStorage.setItem(ROOT_KEY, JSON.stringify(state));
+  const serialised = JSON.stringify(state);
+  try {
+    localStorage.setItem(ROOT_KEY, serialised);
+    localStorage.setItem(ROOT_KEY + '.backup', serialised);
+  } catch (err) {
+    console.error('[store] localStorage save failed:', err);
+    return;
+  }
+  const readBack = localStorage.getItem(ROOT_KEY);
+  if (readBack === null || readBack !== serialised) {
+    console.warn('[store] Save verification failed — data may not be persisting');
+    const backup = localStorage.getItem(ROOT_KEY + '.backup');
+    if (backup === serialised) console.log('[store] Backup key has the correct data');
+  }
 }
 
 export function getState() {
@@ -43,54 +79,129 @@ export function getState() {
   return state;
 }
 
-export function seedFirstSession() {
-  const DATE = '2026-05-04';
+export function seedHistoricalSessions() {
   const s = getState();
-  if (s.sessions[DATE]) return;
 
-  const squatEntry = {
-    date: DATE,
-    sets: [
-      { weight: 95, reps: 8, increment: 5, points: 0 },
-      { weight: 95, reps: 8, increment: 5, points: 0 },
-      { weight: 95, reps: 8, increment: 5, points: 0 },
-    ],
-    score: 0,
-    max: 8,   // squat: 4 sets × (10−8)
-    deload: false,
-    warmupSkipped: false,
-    weight: 95,
-  };
-
-  const ohpEntry = {
-    date: DATE,
-    sets: [
-      { weight: 45, reps: 8, increment: 2.5, points: 0 },
-      { weight: 45, reps: 8, increment: 2.5, points: 0 },
-      { weight: 45, reps: 8, increment: 2.5, points: 0 },
-    ],
-    score: 0,
-    max: 6,   // standing-press: 3 sets × (10−8)
-    deload: false,
-    warmupSkipped: false,
-    weight: 45,
-  };
-
-  s.sessions[DATE] = {
-    sessionId: 'legs',
-    startedAt:   new Date(DATE + 'T06:00:00').getTime(),
-    completedAt: new Date(DATE + 'T07:00:00').getTime(),
-    deload: false,
-    lifts: { squat: squatEntry, 'standing-press': ohpEntry },
-    deferred: [],
-    note: 'First session. Subbed programme — pull-ups 3×2 and rollouts 3×6.',
-  };
-
-  if (!s.lifts['squat']) {
-    s.lifts['squat'] = { weight: 95, lastSession: squatEntry, history: [squatEntry] };
+  // Clean up the May 4 empty shell — that wasn't a real programme session
+  if (s.sessions['2026-05-04'] && Object.keys(s.sessions['2026-05-04'].lifts || {}).length === 0) {
+    delete s.sessions['2026-05-04'];
   }
-  if (!s.lifts['standing-press']) {
-    s.lifts['standing-press'] = { weight: 45, lastSession: ohpEntry, history: [ohpEntry] };
+
+  const SEED = [
+    {
+      date: '2026-05-06', sessionId: 'pull',
+      startedAt: '2026-05-06T06:00:00', completedAt: '2026-05-06T07:00:00',
+      note: null,
+      lifts: [
+        { id: 'pullup',      weight: 0,    reps: [3, 3, 3] },
+        { id: 'cable-row',   weight: 70,   reps: [8, 8, 8] },
+        { id: 'db-row',      weight: 35,   reps: [8, 8, 8] },
+        { id: 'face-pull',   weight: 27.5, reps: [8, 8, 8] },
+        { id: 'bicep-curl',  weight: 40,   reps: [8, 8, 8] },
+      ],
+    },
+    {
+      date: '2026-05-08', sessionId: 'legs',
+      startedAt: '2026-05-08T06:30:00', completedAt: '2026-05-08T07:30:00',
+      note: 'Time-pressed. back-ext 2×8 only. Leg press at top of range.',
+      lifts: [
+        { id: 'squat',     weight: 100, reps: [8, 8, 6] },
+        { id: 'rdl',       weight: 80,  reps: [8, 8, 8] },
+        { id: 'leg-press', weight: 200, reps: [12, 12, 12] },
+        { id: 'leg-curl',  weight: 46,  reps: [8, 8, 8] },
+        { id: 'back-ext',  weight: 20,  reps: [8, 8] },
+      ],
+    },
+  ];
+
+  // Write sessions — skip only if a real session (with lifts) already exists for that date
+  for (const sess of SEED) {
+    const existing = s.sessions[sess.date];
+    const hasLifts = existing && existing.lifts && Object.keys(existing.lifts).length > 0;
+    if (hasLifts) continue;
+    const liftsMap = {};
+    for (const l of sess.lifts) {
+      const def = liftById(l.id);
+      liftsMap[l.id] = {
+        date: sess.date,
+        sets: l.reps.map(reps => ({ weight: l.weight, reps, increment: def ? def.increment : 2.5 })),
+        deload: false, warmupSkipped: false, weight: l.weight,
+        state: null, prevLastReps: null,
+      };
+    }
+    s.sessions[sess.date] = {
+      sessionId:   sess.sessionId,
+      startedAt:   new Date(sess.startedAt).getTime(),
+      completedAt: new Date(sess.completedAt).getTime(),
+      deload: false, lifts: liftsMap, deferred: [], note: sess.note,
+    };
+  }
+
+  // Collect all lift IDs that appear in any seed session
+  const seedLiftIds = new Set(SEED.flatMap(sess => sess.lifts.map(l => l.id)));
+
+  // Rebuild s.lifts for each seed lift by walking ALL sessions in date order.
+  // This includes any real sessions logged after the seed data, keeping state consistent.
+  for (const liftId of seedLiftIds) {
+    const def = liftById(liftId);
+
+    const allEntries = Object.keys(s.sessions).sort().flatMap(date => {
+      const sess = s.sessions[date];
+      if (!sess.completedAt) return [];
+      const le = (sess.lifts || {})[liftId];
+      if (!le || !Array.isArray(le.sets) || le.sets.length === 0) return [];
+      return [{ date, weight: le.weight, reps: le.sets.map(set => set.reps) }];
+    });
+
+    if (allEntries.length === 0) continue;
+
+    const history = [];
+    let prevWeight = null;
+    let prevReps   = null;
+
+    for (const entry of allEntries) {
+      const weightChanged = prevWeight !== null && entry.weight !== prevWeight;
+      const prevLastReps  = weightChanged ? null : prevReps;
+      const curr  = entry.reps.reduce((a, b) => a + b, 0);
+      const last  = prevLastReps ? prevLastReps.reduce((a, b) => a + b, 0) : 0;
+      const state = !prevLastReps ? 'baseline'
+        : curr > last ? 'win' : curr === last ? 'hold' : 'miss';
+
+      const histEntry = {
+        date: entry.date,
+        sets: entry.reps.map(reps => ({ weight: entry.weight, reps, increment: def ? def.increment : 2.5 })),
+        deload: false, warmupSkipped: false, weight: entry.weight,
+        state, prevLastReps,
+      };
+      history.push(histEntry);
+
+      if (s.sessions[entry.date]?.lifts?.[liftId]) {
+        s.sessions[entry.date].lifts[liftId].state        = state;
+        s.sessions[entry.date].lifts[liftId].prevLastReps = prevLastReps;
+      }
+
+      prevWeight = entry.weight;
+      prevReps   = entry.reps;
+    }
+
+    const lastEntry = allEntries[allEntries.length - 1];
+    const lastReps  = lastEntry.reps;
+
+    let consecutiveTopOfRange = 0;
+    for (let i = allEntries.length - 1; i >= 0; i--) {
+      if (allEntries[i].weight !== lastEntry.weight) break;
+      if (def && allEntries[i].reps.every(r => r >= def.repsMax)) consecutiveTopOfRange++;
+      else break;
+    }
+
+    s.lifts[liftId] = {
+      ...(s.lifts[liftId] || {}),
+      weight:               lastEntry.weight,
+      lastSession:          history[history.length - 1],
+      history,
+      lastReps,
+      consecutiveTopOfRange,
+    };
   }
 
   save();
@@ -197,6 +308,19 @@ export function migrateToLastReps() {
   save();
 }
 
+// --- Session rotation ---
+
+const SESSION_SEQUENCE = ['push', 'pull', 'legs', 'full'];
+
+export function advanceSession(completedSessionId) {
+  const s = getState();
+  const idx = SESSION_SEQUENCE.indexOf(completedSessionId);
+  if (idx !== -1) {
+    s.settings.nextSessionIndex = (idx + 1) % SESSION_SEQUENCE.length;
+    save();
+  }
+}
+
 // --- Lifts ---
 
 export function getLift(liftId) {
@@ -250,6 +374,48 @@ export function setBites(date, count) {
   const s = getState();
   if (!s.meals[date]) s.meals[date] = {};
   s.meals[date].bites = count;
+  save();
+}
+
+export function incrementFruit(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].fruit = (s.meals[date].fruit || 0) + 1;
+  save();
+}
+
+export function incrementAlcohol(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].alcohol = (s.meals[date].alcohol || 0) + 1;
+  save();
+}
+
+export function incrementTapa(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].tapa = (s.meals[date].tapa || 0) + 1;
+  save();
+}
+
+export function decrementTapa(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].tapa = Math.max(0, (s.meals[date].tapa || 0) - 1);
+  save();
+}
+
+export function decrementFruit(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].fruit = Math.max(0, (s.meals[date].fruit || 0) - 1);
+  save();
+}
+
+export function decrementAlcohol(date) {
+  const s = getState();
+  if (!s.meals[date]) s.meals[date] = {};
+  s.meals[date].alcohol = Math.max(0, (s.meals[date].alcohol || 0) - 1);
   save();
 }
 

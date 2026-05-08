@@ -1,7 +1,7 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
 import * as nutrition from '../nutrition.js';
-import { SESSIONS, KPI_LIFTS, DAY_SESSION } from '../programme.js';
+import { SESSIONS, KPI_LIFTS } from '../programme.js';
 import { sumReps } from '../scoring.js';
 
 const KPI_NAMES = {
@@ -11,42 +11,22 @@ const KPI_NAMES = {
   'pullup':     'Pull-ups',
 };
 
+const SESSION_SEQUENCE = ['push', 'pull', 'legs', 'full'];
+
 const GTG_MAX = 6;
 
 const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function sessionCard(dow, todayDate, sessions) {
-  const session = SESSIONS[DAY_SESSION[dow]];
-  const isStarted = sessions[todayDate] && sessions[todayDate].startedAt;
-  const isCompleted = sessions[todayDate] && sessions[todayDate].completedAt;
+function sessionCard(nextSessionIndex, todayDate, sessions) {
+  const todaySession = sessions[todayDate];
+  const isStarted   = todaySession && todaySession.startedAt;
+  const isCompleted = todaySession && todaySession.completedAt;
 
-  if (dow === 5) {
-    return `
-      <div class="session-card" id="session-card" data-action="flex">
-        <div class="session-card-icon">◎</div>
-        <div class="session-card-name">Friday flex</div>
-        <div class="session-card-sub">choose: cardio / extra session / rest</div>
-        <div class="session-card-cta">Log activity →</div>
-      </div>`;
-  }
-  if (dow === 6) {
-    return `
-      <div class="session-card" id="session-card" data-action="run">
-        <div class="session-card-icon">⟳</div>
-        <div class="session-card-name">Easy run · 45 min</div>
-        <div class="session-card-sub">The weekend ritual</div>
-        <div class="session-card-cta">Log run →</div>
-      </div>`;
-  }
-  if (dow === 0) {
-    return `
-      <div class="session-card" style="cursor:default">
-        <div class="session-card-icon">◯</div>
-        <div class="session-card-name">Rest day</div>
-        <div class="session-card-sub">Big day tomorrow.</div>
-      </div>`;
-  }
+  const sessionId = isCompleted
+    ? (todaySession.sessionId || SESSION_SEQUENCE[nextSessionIndex])
+    : SESSION_SEQUENCE[nextSessionIndex];
+  const session = SESSIONS[sessionId];
   if (!session) return '';
 
   if (isCompleted) {
@@ -118,20 +98,28 @@ function weekProgressHTML(state, todayDate) {
 
   let daysElapsed = 0;
   let proteinHit  = 0;
+  let weekEaten   = 0;
+  let weekTotal   = 0;
   let d = start;
   while (d <= todayDate && d <= end) {
     daysElapsed++;
     const dm = state.meals[d];
     if (dm && nutrition.computeProtein(dm) >= state.settings.proteinTarget) proteinHit++;
+    if (dm) {
+      weekTotal += nutrition.MEALS.length;
+      nutrition.MEALS.forEach(m => { if (dm[m.id] === 'eaten') weekEaten++; });
+    }
     d = time.addDays(d, 1);
   }
   const proteinPct  = daysElapsed > 0 ? proteinHit / daysElapsed : 0;
   const sessionPct  = completed / target;
   const combined    = Math.round(((sessionPct + proteinPct) / 2) * 100);
   const wkNum       = time.weekNumber(state.settings.startedAt);
-  const proteinDisp = Math.round(proteinPct * 100);
+  const weekMealsDisp = weekTotal === 0
+    ? '0 meals logged this week'
+    : `${weekEaten}/${weekTotal} meals this week`;
 
-  return { completed, target, combined, wkNum, proteinDisp };
+  return { completed, target, combined, wkNum, weekMealsDisp };
 }
 
 export function mount(el) {
@@ -141,7 +129,7 @@ export function mount(el) {
   const [y, m, d] = todayDate.split('-').map(Number);
   const dateLabel = `${DAY_LABELS[dow]} · ${d} ${MONTH_LABELS[m - 1]}`;
 
-  const { completed, target, combined, wkNum, proteinDisp } = weekProgressHTML(state, todayDate);
+  const { completed, target, combined, wkNum, weekMealsDisp } = weekProgressHTML(state, todayDate);
 
   const currentMeal = nutrition.currentMealWindow();
   const dayMeals    = state.meals[todayDate] || {};
@@ -165,7 +153,7 @@ export function mount(el) {
         <div class="progress-bar-fill" style="width:${combined}%"></div>
       </div>
       <div class="today-week-meta">
-        ${completed} of ${target} sessions · ${proteinDisp}% protein this week
+        ${completed} of ${target} sessions · ${weekMealsDisp}
       </div>
 
       ${isSunday ? `
@@ -188,7 +176,7 @@ export function mount(el) {
       </div>
 
       <div class="section-label" style="margin-top:16px">Today</div>
-      ${sessionCard(dow, todayDate, state.sessions)}
+      ${sessionCard(state.settings.nextSessionIndex ?? 0, todayDate, state.sessions)}
 
       ${gtgCardHTML(store.getHabits(todayDate).gtg || 0)}
 
@@ -198,7 +186,6 @@ export function mount(el) {
           <div class="meal-block-name">${currentMeal.name}</div>
           <div class="meal-actions">
             <button class="meal-action-btn eaten" data-meal="${currentMeal.id}" data-state="eaten">✓ Eaten</button>
-            <button class="meal-action-btn cheat" data-meal="${currentMeal.id}" data-state="cheat">⚠ Cheat</button>
             <button class="meal-action-btn skipped" data-meal="${currentMeal.id}" data-state="skipped">✕ Skip</button>
           </div>
         </div>` : ''}
@@ -264,7 +251,7 @@ function updateGtg(todayDate) {
 function mealDotsHTML(dayMeals) {
   return nutrition.MEALS.map(m => {
     const st = dayMeals[m.id];
-    const cls = st === 'eaten' ? 'eaten' : st === 'cheat' ? 'cheat' : st === 'skipped' ? 'skipped' : st === 'replaced' ? 'replaced' : '';
+    const cls = st === 'eaten' ? 'eaten' : st === 'skipped' ? 'skipped' : st === 'replaced' ? 'replaced' : '';
     return `<div class="meal-dot ${cls}"></div>`;
   }).join('');
 }
@@ -284,7 +271,7 @@ function computeLastWeekVerdict(state, todayDate) {
   let d = prevMon;
   while (d <= prevSun) {
     const dm = state.meals[d] || {};
-    total += 5;
+    total += nutrition.MEALS.length;
     nutrition.MEALS.forEach(m => { if (dm[m.id] === 'eaten') eaten++; });
     d = time.addDays(d, 1);
   }

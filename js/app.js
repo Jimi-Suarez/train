@@ -34,9 +34,9 @@ async function init() {
     console.warn('Could not load seed data', e);
   }
 
-  store.seedFirstSession();
   store.seedLiftWeights();
   store.migrateToLastReps();
+  store.seedHistoricalSessions();
 
   setupRouter();
   setupTabBar();

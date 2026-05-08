@@ -1,6 +1,6 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
-import { SESSIONS, DAY_SESSION, DEFAULT_WEIGHTS, SUBSTITUTIONS, warmupSets, liftById } from '../programme.js';
+import { SESSIONS, DEFAULT_WEIGHTS, SUBSTITUTIONS, warmupSets, liftById } from '../programme.js';
 import { applyDeload, sumReps, sessionState, hitTopOfRangeAllSets, shouldSuggestDeload } from '../scoring.js';
 
 const MOBILITY_PHASES = [
@@ -18,6 +18,8 @@ const DISRUPTION_OPTIONS = [
   { key: 'travel',       label: 'Travel'       },
   { key: 'didnt-feel-it',label: "Didn't feel"  },
 ];
+
+const SESSION_SEQUENCE = ['push', 'pull', 'legs', 'full'];
 
 let s = null;  // gym state
 let rafId = null;
@@ -103,49 +105,45 @@ function render() {
 // ─── Idle ─────────────────────────────────────────────────────────────────────
 
 function renderIdle() {
-  const todayDate = time.today();
-  const dow       = time.dayOfWeek(todayDate);
-  const sessionId = DAY_SESSION[dow];
-  const sessionDef = sessionId ? SESSIONS[sessionId] : null;
+  const nextIdx = store.getState().settings.nextSessionIndex ?? 0;
+  if (!s.sessionType) s.sessionType = SESSION_SEQUENCE[nextIdx];
 
-  let content = '';
-  if (sessionDef) {
-    content = `
-      <div class="gym-phase-label">Today's session</div>
+  const sessionDef   = SESSIONS[s.sessionType];
+  const alternatives = SESSION_SEQUENCE
+    .filter(id => id !== s.sessionType)
+    .map(id => SESSIONS[id]);
+
+  const altChips = alternatives.map(alt =>
+    `<button class="btn btn-secondary btn-sm session-alt-chip" data-session-id="${alt.id}"
+             style="flex:0 0 auto">${alt.icon} ${alt.name}</button>`
+  ).join('');
+
+  el_ref.innerHTML = `
+    <div class="gym-wrap">
+      <div class="gym-phase-label">Next session</div>
       <div style="font-size:28px;font-weight:700;margin:4px 0 4px">${sessionDef.icon} ${sessionDef.name} Day</div>
       <div class="text-muted text-sm" style="margin-bottom:24px">${sessionDef.subtitle}</div>
       <button class="btn btn-primary" id="start-session-btn">Start session →</button>
+      <div style="height:20px"></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Switch session:</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${altChips}</div>
       <div style="height:16px"></div>
       <button class="btn btn-ghost btn-sm" id="tell-someone-btn" style="width:auto;align-self:flex-start">
         Tell someone you're training →
-      </button>`;
-  } else if (dow === 5) {
-    content = `<div class="session-card" style="cursor:default">
-        <div class="session-card-icon">◎</div>
-        <div class="session-card-name">Friday flex</div>
-        <div class="session-card-sub">Cardio / extra session / rest — your call.</div>
-      </div>`;
-  } else if (dow === 6) {
-    content = `<div class="session-card" style="cursor:default">
-        <div class="session-card-icon">⟳</div>
-        <div class="session-card-name">Easy run · 45 min</div>
-        <div class="session-card-sub">The weekend ritual. Don't skip it.</div>
-      </div>`;
-  } else {
-    content = `<div class="session-card" style="cursor:default">
-        <div class="session-card-icon">◯</div>
-        <div class="session-card-name">Rest day</div>
-        <div class="session-card-sub">Big day tomorrow.</div>
-      </div>`;
-  }
+      </button>
+    </div>`;
 
-  el_ref.innerHTML = `<div class="gym-wrap">${content}</div>`;
-
-  el_ref.querySelector('#start-session-btn')?.addEventListener('click', () => {
-    s.sessionType = sessionId;
-    s.lifts       = sessionDef.lifts.slice();
-    s.phase       = 'pre';
+  el_ref.querySelector('#start-session-btn').addEventListener('click', () => {
+    s.lifts = sessionDef.lifts.slice();
+    s.phase = 'pre';
     render();
+  });
+
+  el_ref.querySelectorAll('.session-alt-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      s.sessionType = chip.dataset.sessionId;
+      renderIdle();
+    });
   });
 
   el_ref.querySelector('#tell-someone-btn')?.addEventListener('click', () => {
@@ -953,6 +951,7 @@ function finishSession() {
   releaseWakeLock();
   const todayDate = time.today();
   store.setSession(todayDate, { completedAt: Date.now() });
+  store.advanceSession(s.sessionType);
   s.phase = 'summary';
   renderSummary();
 }

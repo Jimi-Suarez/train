@@ -811,6 +811,7 @@ input:checked + .toggle-slider::before { transform: translateX(20px); background
   gap: 8px;
 }
 .extra-btn:active { background: var(--surface2); }
+.extra-btn.decrementing { opacity: 0.45; }
 
 /* Last Week panel */
 .lastweek-panel {
