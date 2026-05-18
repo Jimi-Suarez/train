@@ -61,9 +61,28 @@ function resultBadge(stateVal) {
   return `<span style="font-size:11px;font-weight:700;color:${cfg.color}">${cfg.label}</span>`;
 }
 
+function latestDateInVariantState(vSt) {
+  if (!vSt) return null;
+  if (vSt.lastSession?.date) return vSt.lastSession.date;
+  const hist = vSt.history || [];
+  return hist.length > 0 ? hist[hist.length - 1].date : null;
+}
+
+function resolveVariantSt(id, rawSt) {
+  if (!store.VARIANT_LIFTS.has(id) || !rawSt) return { st: rawSt, variant: null };
+  const bbDate = latestDateInVariantState(rawSt.bb);
+  const dbDate = latestDateInVariantState(rawSt.db);
+  let variant;
+  if (!bbDate && !dbDate) variant = 'bb';
+  else if (!bbDate) variant = 'db';
+  else if (!dbDate) variant = 'bb';
+  else variant = dbDate > bbDate ? 'db' : 'bb';
+  return { st: rawSt[variant] || null, variant };
+}
+
 function bigFourRows(liftStates) {
   return KPI_LIFTS.map(id => {
-    const st      = liftStates[id];
+    const { st, variant } = resolveVariantSt(id, liftStates[id]);
     const wt      = st ? st.weight : null;
     const wtStr   = wt === 0 ? 'BW' : wt != null ? `${wt}kg` : '—';
     const lastReps = st?.lastReps || null;
@@ -73,10 +92,13 @@ function bigFourRows(liftStates) {
     const mission  = lastReps
       ? `Beat ${total} to win · hit ${total} to hold`
       : (st ? 'Establish baseline' : '');
+    const variantTag = variant
+      ? `<span style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:0.05em;margin-left:4px">${variant.toUpperCase()}</span>`
+      : '';
     return `
       <div class="big-four-row" data-lift="${id}">
         <div class="big-four-left">
-          <div class="big-four-name">${KPI_NAMES[id]}</div>
+          <div class="big-four-name">${KPI_NAMES[id]}${variantTag}</div>
           <div class="big-four-sub">${mission}</div>
         </div>
         <div class="big-four-right">

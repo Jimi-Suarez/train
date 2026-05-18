@@ -4,6 +4,9 @@ import { liftById } from './programme.js';
 const ROOT_KEY = 'train.jimi.v1';
 let state = null;
 
+// Lifts that carry independent bb/db progression sub-states.
+export const VARIANT_LIFTS = new Set(['incline-bb', 'db-shoulder-press', 'flat-db']);
+
 function defaultState() {
   return {
     version: 1,
@@ -54,7 +57,23 @@ export function load() {
     state.settings.nextSessionIndex = 2;
     save();
   }
+  migrateVariantLifts();
   return state;
+}
+
+// One-time migration: flat lift state → { bb: <flat>, db: null }.
+// Idempotent — skipped if bb/db keys already present.
+function migrateVariantLifts() {
+  const s = getState();
+  let changed = false;
+  for (const liftId of VARIANT_LIFTS) {
+    const current = s.lifts[liftId];
+    if (!current) continue;
+    if ('bb' in current || 'db' in current) continue; // already migrated
+    s.lifts[liftId] = { bb: current, db: null };
+    changed = true;
+  }
+  if (changed) save();
 }
 
 function save() {
@@ -244,7 +263,9 @@ export function seedLiftWeights() {
 
   for (const [id, weight] of Object.entries(WEIGHTS)) {
     if (!s.lifts[id]) {
-      s.lifts[id] = { weight, lastSession: null, history: [] };
+      s.lifts[id] = VARIANT_LIFTS.has(id)
+        ? { bb: { weight, lastSession: null, history: [] }, db: null }
+        : { weight, lastSession: null, history: [] };
       changed = true;
     }
   }
@@ -273,6 +294,7 @@ export function migrateToLastReps() {
 
   for (const [liftId, liftState] of Object.entries(s.lifts)) {
     if (!liftState) continue;
+    if (VARIANT_LIFTS.has(liftId)) continue;
 
     const lift = liftById(liftId);
     let lastReps = null;
@@ -322,22 +344,47 @@ export function advanceSession(completedSessionId) {
 }
 
 // --- Lifts ---
+// For variant lifts (VARIANT_LIFTS), pass a variant ('bb' or 'db') to select the sub-state.
+// For all other lifts the variant parameter is ignored and the flat shape is used.
 
-export function getLift(liftId) {
-  return getState().lifts[liftId] || null;
+export function getLift(liftId, variant = null) {
+  const liftState = getState().lifts[liftId];
+  if (!liftState) return null;
+  if (VARIANT_LIFTS.has(liftId)) {
+    if (!variant) return null;
+    return liftState[variant] || null;
+  }
+  return liftState;
 }
 
-export function setLift(liftId, data) {
+export function setLift(liftId, data, variant = null) {
   const s = getState();
-  s.lifts[liftId] = { ...(s.lifts[liftId] || {}), ...data };
+  if (VARIANT_LIFTS.has(liftId)) {
+    if (!variant) return;
+    const existing = s.lifts[liftId] || { bb: null, db: null };
+    existing[variant] = { ...(existing[variant] || {}), ...data };
+    s.lifts[liftId] = existing;
+  } else {
+    s.lifts[liftId] = { ...(s.lifts[liftId] || {}), ...data };
+  }
   save();
 }
 
-export function initLift(liftId, weight) {
+export function initLift(liftId, weight, variant = null) {
   const s = getState();
-  if (!s.lifts[liftId]) {
-    s.lifts[liftId] = { weight, lastSession: null, history: [] };
-    save();
+  if (VARIANT_LIFTS.has(liftId)) {
+    if (!variant) return;
+    const existing = s.lifts[liftId] || { bb: null, db: null };
+    if (!existing[variant]) {
+      existing[variant] = { weight, lastSession: null, history: [] };
+      s.lifts[liftId] = existing;
+      save();
+    }
+  } else {
+    if (!s.lifts[liftId]) {
+      s.lifts[liftId] = { weight, lastSession: null, history: [] };
+      save();
+    }
   }
 }
 

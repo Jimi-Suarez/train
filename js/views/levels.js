@@ -4,17 +4,26 @@ import { sumReps } from '../scoring.js';
 import * as time from '../time.js';
 
 let detailLiftId = null;
+let detailVariant = null;
 
 export function mount(el) {
   const hash  = location.hash;
   const match = hash.match(/[?&]lift=([^&]+)/);
-  if (match) detailLiftId = match[1];
-  else detailLiftId = null;
+  if (match) {
+    detailLiftId  = match[1];
+    detailVariant = store.VARIANT_LIFTS.has(detailLiftId)
+      ? resolveDefaultVariant(detailLiftId)
+      : null;
+  } else {
+    detailLiftId  = null;
+    detailVariant = null;
+  }
   render(el);
 }
 
 export function unmount() {
-  detailLiftId = null;
+  detailLiftId  = null;
+  detailVariant = null;
 }
 
 function render(el) {
@@ -38,15 +47,45 @@ function resultBadge(stateVal) {
   return `<span style="font-size:11px;font-weight:700;color:${cfg.color}">${cfg.label}</span>`;
 }
 
+function variantTagHTML(variant) {
+  if (!variant) return '';
+  return `<span style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:0.05em;margin-left:4px">${variant.toUpperCase()}</span>`;
+}
+
+function latestDateInVariantState(vSt) {
+  if (!vSt) return null;
+  if (vSt.lastSession?.date) return vSt.lastSession.date;
+  const hist = vSt.history || [];
+  return hist.length > 0 ? hist[hist.length - 1].date : null;
+}
+
+function resolveDefaultVariant(liftId) {
+  const stored = store.getState().lifts[liftId];
+  if (!stored) return 'bb';
+  const bbDate = latestDateInVariantState(stored.bb);
+  const dbDate = latestDateInVariantState(stored.db);
+  if (!bbDate && !dbDate) return 'bb';
+  if (!bbDate) return 'db';
+  if (!dbDate) return 'bb';
+  return dbDate > bbDate ? 'db' : 'bb';
+}
+
+function resolveVariantSt(id, rawSt) {
+  if (!store.VARIANT_LIFTS.has(id) || !rawSt) return { st: rawSt, variant: null };
+  const variant = resolveDefaultVariant(id);
+  return { st: rawSt[variant] || null, variant };
+}
+
 function renderList(el) {
   const lifts = store.getState().lifts;
 
   const needsAttention = [];
   const closeTo        = [];
 
-  Object.entries(lifts).forEach(([id, st]) => {
-    if (!st) return;
-    if (!st.lastReps) needsAttention.push(id);
+  Object.entries(lifts).forEach(([id, rawSt]) => {
+    if (!rawSt) return;
+    const { st } = resolveVariantSt(id, rawSt);
+    if (!st?.lastReps) needsAttention.push(id);
     else if ((st.consecutiveTopOfRange || 0) === 1) closeTo.push(id);
   });
 
@@ -74,19 +113,23 @@ function renderList(el) {
 
   el.querySelectorAll('.level-row').forEach(row => {
     row.addEventListener('click', () => {
-      detailLiftId = row.dataset.liftId;
+      detailLiftId  = row.dataset.liftId;
+      detailVariant = store.VARIANT_LIFTS.has(detailLiftId)
+        ? resolveDefaultVariant(detailLiftId)
+        : null;
       render(el);
     });
   });
 }
 
-function needsAttentionRow(id, st) {
+function needsAttentionRow(id, rawSt) {
   const liftDef = findLiftDef(id);
   if (!liftDef) return '';
+  const { st, variant } = resolveVariantSt(id, rawSt);
   const weight = st ? (st.weight === 0 ? 'BW' : `${st.weight}${liftDef.isTime ? 's' : 'kg'}`) : '—';
   return `
     <div class="level-row" data-lift-id="${id}">
-      <div class="level-row-name">${liftDef.name}</div>
+      <div class="level-row-name">${liftDef.name}${variantTagHTML(variant)}</div>
       <div class="level-row-right" style="gap:8px">
         <span class="level-row-weight">${weight}</span>
         <span style="font-size:11px;color:var(--text2)">First session at this weight — establish baseline</span>
@@ -94,13 +137,14 @@ function needsAttentionRow(id, st) {
     </div>`;
 }
 
-function closeToRow(id, st) {
+function closeToRow(id, rawSt) {
   const liftDef = findLiftDef(id);
   if (!liftDef) return '';
+  const { st, variant } = resolveVariantSt(id, rawSt);
   const weight = st ? (st.weight === 0 ? 'BW' : `${st.weight}${liftDef.isTime ? 's' : 'kg'}`) : '—';
   return `
     <div class="level-row" data-lift-id="${id}">
-      <div class="level-row-name">${liftDef.name}</div>
+      <div class="level-row-name">${liftDef.name}${variantTagHTML(variant)}</div>
       <div class="level-row-right" style="gap:8px">
         <span class="level-row-weight">${weight}</span>
         <span style="font-size:11px;color:var(--lime)">1 of 2 max sessions — one more to graduate</span>
@@ -108,15 +152,16 @@ function closeToRow(id, st) {
     </div>`;
 }
 
-function liftRowHTML(id, st) {
-  const liftDef   = findLiftDef(id);
+function liftRowHTML(id, rawSt) {
+  const liftDef = findLiftDef(id);
   if (!liftDef) return '';
+  const { st, variant } = resolveVariantSt(id, rawSt);
   const weight    = st ? (st.weight === 0 ? 'BW' : `${st.weight}${liftDef.isTime ? 's' : 'kg'}`) : '—';
   const lastState = st?.lastSession?.state || null;
   const repsStr   = st?.lastReps ? st.lastReps.join(', ') : '—';
   return `
     <div class="level-row" data-lift-id="${id}">
-      <div class="level-row-name">${liftDef.name}</div>
+      <div class="level-row-name">${liftDef.name}${variantTagHTML(variant)}</div>
       <div class="level-row-right" style="gap:8px">
         <span class="level-row-weight">${weight}</span>
         ${resultBadge(lastState)}
@@ -127,8 +172,12 @@ function liftRowHTML(id, st) {
 
 function renderDetail(el, liftId) {
   const liftDef = findLiftDef(liftId);
-  const st      = store.getLift(liftId);
   if (!liftDef) { renderList(el); return; }
+
+  const isVariant = store.VARIANT_LIFTS.has(liftId);
+  if (isVariant && !detailVariant) detailVariant = resolveDefaultVariant(liftId);
+
+  const st = isVariant ? store.getLift(liftId, detailVariant) : store.getLift(liftId);
 
   const weight    = st ? (st.weight === 0 ? 'BW' : `${st.weight}kg`) : '—';
   const lastState = st?.lastSession?.state || null;
@@ -142,12 +191,22 @@ function renderDetail(el, liftId) {
 
   const sessionHistory = st ? (st.history || []).slice().reverse().slice(0, 10) : [];
 
+  const variantTabs = isVariant ? `
+    <div style="display:flex;gap:8px;margin:8px 0 4px">
+      ${['bb', 'db'].map(v => `
+        <button class="btn ${detailVariant === v ? 'btn-primary' : 'btn-ghost'} btn-sm variant-tab-btn"
+                data-variant="${v}" style="width:56px">
+          ${v.toUpperCase()}
+        </button>`).join('')}
+    </div>` : '';
+
   el.innerHTML = `
     <div class="lift-detail-wrap">
       <div class="back-link" id="back-btn">← All lifts</div>
 
       <div class="lift-detail-header">
-        <div style="font-size:22px;font-weight:700">${liftDef.name}</div>
+        <div style="font-size:22px;font-weight:700">${liftDef.name}${isVariant ? variantTagHTML(detailVariant) : ''}</div>
+        ${variantTabs}
         <div style="display:flex;gap:12px;align-items:center;margin-top:6px">
           <span style="font-size:18px;font-weight:700">${weight}</span>
           ${resultBadge(lastState)}
@@ -168,15 +227,23 @@ function renderDetail(el, liftId) {
     </div>`;
 
   el.querySelector('#back-btn').addEventListener('click', () => {
-    detailLiftId = null;
+    detailLiftId  = null;
+    detailVariant = null;
     renderList(el);
     if (location.hash.includes('?')) {
       window.history.replaceState(null, '', location.hash.split('?')[0]);
     }
   });
 
+  el.querySelectorAll('.variant-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      detailVariant = btn.dataset.variant;
+      renderDetail(el, liftId);
+    });
+  });
+
   el.querySelector('#bump-weight-btn')?.addEventListener('click', () => {
-    openBumpSheet(el, liftId, liftDef, st);
+    openBumpSheet(el, liftId, liftDef, st, isVariant ? detailVariant : null);
   });
 }
 
@@ -194,7 +261,7 @@ function historyRowHTML(entry) {
     </div>`;
 }
 
-function openBumpSheet(el, liftId, liftDef, st) {
+function openBumpSheet(el, liftId, liftDef, st, variant = null) {
   const currentWeight = st ? st.weight : 0;
   const defaultNew    = currentWeight + liftDef.increment;
   const minTarget     = liftDef.repsMin * liftDef.sets;
@@ -233,7 +300,7 @@ function openBumpSheet(el, liftId, liftDef, st) {
   sheet.querySelector('#bump-confirm').addEventListener('click', () => {
     const newWeight = parseFloat(input.value);
     if (isNaN(newWeight) || newWeight < 0) return;
-    store.setLift(liftId, { weight: newWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    store.setLift(liftId, { weight: newWeight, lastReps: null, consecutiveTopOfRange: 0 }, variant);
     sheet.remove();
     renderDetail(el, liftId);
   });

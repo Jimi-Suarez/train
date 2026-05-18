@@ -21,7 +21,7 @@ const DISRUPTION_OPTIONS = [
 
 const SESSION_SEQUENCE = ['push', 'pull', 'legs', 'full'];
 
-let s = null;  // gym state
+let s = null;
 let rafId = null;
 let el_ref = null;
 
@@ -48,8 +48,57 @@ function defaultState() {
     selectedDisruption: null,
     sessionNote: '',
     wakeLock: null,
+    liftVariants: {},  // { [liftId]: 'bb' | 'db' }
   };
 }
+
+// ─── Variant helpers ──────────────────────────────────────────────────────────
+
+function latestDateInVariantState(vSt) {
+  if (!vSt) return null;
+  if (vSt.lastSession?.date) return vSt.lastSession.date;
+  const hist = vSt.history || [];
+  return hist.length > 0 ? hist[hist.length - 1].date : null;
+}
+
+function resolveDefaultVariant(liftId) {
+  const stored = store.getState().lifts[liftId];
+  if (!stored) return 'bb';
+  const bbDate = latestDateInVariantState(stored.bb);
+  const dbDate = latestDateInVariantState(stored.db);
+  if (!bbDate && !dbDate) return 'bb';
+  if (!bbDate) return 'db';
+  if (!dbDate) return 'bb';
+  return dbDate > bbDate ? 'db' : 'bb';
+}
+
+// Returns 'bb' | 'db' for variant lifts; null for non-variant lifts.
+function variantFor(liftId) {
+  if (!store.VARIANT_LIFTS.has(liftId)) return null;
+  return s.liftVariants[liftId] || 'bb';
+}
+
+function variantPillHTML(liftId, active) {
+  const pill = (v) => {
+    const on = v === active;
+    return `<button class="variant-pill-btn" data-lid="${liftId}" data-v="${v}"
+      style="padding:2px 8px;font-size:11px;font-weight:700;border:none;cursor:pointer;
+             background:${on ? 'var(--lime)' : 'transparent'};
+             color:${on ? 'var(--bg)' : 'var(--text2)'};
+             border-radius:4px;line-height:1.6">${v.toUpperCase()}</button>`;
+  };
+  return `<div style="display:inline-flex;gap:2px;border-radius:6px;padding:2px;
+                      background:var(--surface2);border:1px solid var(--border)">${pill('bb')}${pill('db')}</div>`;
+}
+
+function variantTagHTML(variant) {
+  if (!variant) return '';
+  return `<span style="display:inline-block;font-size:9px;font-weight:800;color:var(--text2);
+                       background:var(--surface2);border:1px solid var(--border);border-radius:3px;
+                       padding:1px 4px;margin-left:5px;vertical-align:middle;letter-spacing:.05em">${variant.toUpperCase()}</span>`;
+}
+
+// ─── Mount / unmount ──────────────────────────────────────────────────────────
 
 export function mount(el) {
   el_ref = el;
@@ -72,14 +121,15 @@ function detectActiveSession() {
     const saved = session._gymState;
     const sessionDef = SESSIONS[session.sessionId];
     if (sessionDef) {
-      s.phase       = saved.phase || 'lift';
-      s.sessionType = session.sessionId;
-      s.lifts       = sessionDef.lifts.slice();
-      s.liftIndex   = saved.liftIndex || 0;
-      s.setIndex    = saved.setIndex  || 0;
-      s.deload      = session.deload || false;
-      s.deferred    = session.deferred || [];
-      s.currentSets = saved.currentSets || [];
+      s.liftVariants  = saved.liftVariants || {};
+      s.phase         = saved.phase || 'lift';
+      s.sessionType   = session.sessionId;
+      s.lifts         = sessionDef.lifts.slice();
+      s.liftIndex     = saved.liftIndex || 0;
+      s.setIndex      = saved.setIndex  || 0;
+      s.deload        = session.deload || false;
+      s.deferred      = session.deferred || [];
+      s.currentSets   = saved.currentSets || [];
       s.currentWeight = saved.currentWeight || currentLiftWeight();
       s.currentReps   = saved.currentReps   || topOfRange(currentLift());
     }
@@ -157,34 +207,63 @@ function renderIdle() {
 
 function renderPre() {
   const sessionDef = SESSIONS[s.sessionType];
+
+  // Seed default variant for any variant lift not yet chosen this session
+  for (const lift of s.lifts) {
+    if (store.VARIANT_LIFTS.has(lift.id) && !s.liftVariants[lift.id]) {
+      s.liftVariants[lift.id] = resolveDefaultVariant(lift.id);
+    }
+  }
+
   const liftRows = s.lifts.map(lift => {
-    const liftSt = store.getLift(lift.id);
-    let weight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
-    if (s.deload) weight = applyDeload(weight);
-    const weightStr = weight === 0 ? 'BW' : weight + 'kg';
+    const variant = variantFor(lift.id);
+    const liftSt  = store.getLift(lift.id, variant);
     const lastReps  = liftSt ? liftSt.lastReps : null;
     const lastTotal = sumReps(lastReps);
-    const lastLine  = lastReps
-      ? `Last: ${lastReps.join(', ')} · ${lastTotal} reps total`
-      : 'First time at this weight';
-    const missionLine = lastReps
-      ? `Beat ${lastTotal} to win · hit ${lastTotal} to hold`
-      : `Establish baseline (≥${lift.repsMin * lift.sets} reps total)`;
+
+    let displayStr, lastLine, missionLine;
+    if (lift.isTime) {
+      displayStr  = `${lift.sets} × ${lift.repsMin}-${lift.repsMax} sec`;
+      lastLine    = lastReps
+        ? `Last: ${lastReps.join(', ')} · ${lastTotal} sec total`
+        : 'First time at this hold';
+      missionLine = lastReps
+        ? `Beat ${lastTotal} sec to win · hit ${lastTotal} sec to hold`
+        : `Establish baseline (≥${lift.repsMin * lift.sets} sec total)`;
+    } else {
+      let weight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
+      if (s.deload) weight = applyDeload(weight);
+      displayStr  = weight === 0 ? 'BW' : weight + 'kg';
+      lastLine    = lastReps
+        ? `Last: ${lastReps.join(', ')} · ${lastTotal} reps total`
+        : variant && !liftSt ? `First time with ${variant.toUpperCase()} variant` : 'First time at this weight';
+      missionLine = lastReps
+        ? `Beat ${lastTotal} to win · hit ${lastTotal} to hold`
+        : `Establish baseline (≥${lift.repsMin * lift.sets} reps total)`;
+    }
+
+    const variantToggle = variant !== null
+      ? `<div style="margin-left:8px">${variantPillHTML(lift.id, variant)}</div>`
+      : '';
+
     return `
       <li class="presession-item" style="flex-direction:column;align-items:flex-start;gap:4px">
         <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
-          <div class="presession-lift-name">${lift.name}</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-weight:700">${weightStr}</span>
-            ${s.deload ? '<span class="deload-badge">DELOAD</span>' : ''}
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+            <div class="presession-lift-name">${lift.name}</div>
+            ${variantToggle}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">
+            <span style="font-weight:700">${displayStr}</span>
+            ${!lift.isTime && s.deload ? '<span class="deload-badge">DELOAD</span>' : ''}
           </div>
         </div>
         <div style="font-size:12px;color:var(--text2)">${lastLine}</div>
         <div style="font-size:12px;color:var(--text3)">${missionLine}</div>
-        <button class="btn btn-ghost btn-sm bump-weight-btn" data-lift-id="${lift.id}"
+        ${!lift.isTime ? `<button class="btn btn-ghost btn-sm bump-weight-btn" data-lift-id="${lift.id}"
                 style="width:auto;padding:2px 10px;font-size:11px;min-height:30px;margin-top:2px">
           Bump weight ↑
-        </button>
+        </button>` : ''}
       </li>`;
   }).join('');
 
@@ -238,6 +317,14 @@ function renderPre() {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       openBumpWeightSheet(btn.dataset.liftId);
+    });
+  });
+
+  el_ref.querySelectorAll('.variant-pill-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      s.liftVariants[btn.dataset.lid] = btn.dataset.v;
+      renderPre();
     });
   });
 }
@@ -324,9 +411,10 @@ function pickTimePressedLifts() {
 }
 
 function openBumpWeightSheet(liftId) {
-  const lift = s.lifts.find(l => l.id === liftId);
+  const lift    = s.lifts.find(l => l.id === liftId);
   if (!lift) return;
-  const liftSt = store.getLift(liftId);
+  const variant = variantFor(liftId);
+  const liftSt  = store.getLift(liftId, variant);
   const currentWeight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[liftId] ?? 0;
   const lastReps  = liftSt ? liftSt.lastReps : null;
   const lastTotal = sumReps(lastReps);
@@ -367,7 +455,7 @@ function openBumpWeightSheet(liftId) {
   sheet.querySelector('#bump-confirm').addEventListener('click', () => {
     const newWeight = parseFloat(input.value);
     if (isNaN(newWeight) || newWeight <= 0) return;
-    store.setLift(liftId, { weight: newWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    store.setLift(liftId, { weight: newWeight, lastReps: null, consecutiveTopOfRange: 0 }, variant);
     sheet.remove();
     renderPre();
   });
@@ -455,10 +543,11 @@ function startWarmup() {
 // ─── Warmup ───────────────────────────────────────────────────────────────────
 
 function renderWarmup() {
-  const lift   = s.lifts[0];
-  const liftSt = store.getLift(lift.id);
-  const wt     = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
-  const wSets  = warmupSets(wt, lift);
+  const lift    = s.lifts[0];
+  const variant = variantFor(lift.id);
+  const liftSt  = store.getLift(lift.id, variant);
+  const wt      = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
+  const wSets   = warmupSets(wt, lift);
   const current = wSets[s.warmupIndex];
 
   if (!current || s.warmupIndex >= wSets.length) {
@@ -494,14 +583,21 @@ function renderWarmup() {
 // ─── Lift ─────────────────────────────────────────────────────────────────────
 
 function startLift(index) {
-  s.phase      = 'lift';
-  s.liftIndex  = index;
-  s.setIndex   = 0;
+  s.phase       = 'lift';
+  s.liftIndex   = index;
+  s.setIndex    = 0;
   s.currentSets = [];
-  const lift   = s.lifts[index];
+  const lift    = s.lifts[index];
   if (!lift) { finishSession(); return; }
-  const liftSt = store.getLift(lift.id);
-  let weight   = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
+  const variant = variantFor(lift.id);
+  const liftSt  = store.getLift(lift.id, variant);
+
+  if (variant && !liftSt) {
+    promptFirstVariantWeight(lift, variant, index);
+    return;
+  }
+
+  let weight = liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift.id] ?? 0;
   if (s.deload) weight = applyDeload(weight);
   s.currentWeight = weight;
   s.currentReps   = topOfRange(lift);
@@ -509,14 +605,56 @@ function startLift(index) {
   render();
 }
 
+function promptFirstVariantWeight(lift, variant, liftIndex) {
+  const defaultWt    = DEFAULT_WEIGHTS[lift.id] ?? 0;
+  const variantLabel = variant === 'bb' ? 'barbell' : 'dumbbell';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">${lift.name} · ${variant.toUpperCase()} — starting weight</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        First time with the ${variantLabel} variant. Set your starting weight.
+      </div>
+      <input class="modal-input" type="number" step="${lift.increment}" id="first-variant-weight" value="${defaultWt}" />
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="fv-back">Back</button>
+        <button class="btn btn-primary" id="fv-confirm">Start →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  modal.querySelector('#fv-back').addEventListener('click', () => {
+    modal.remove();
+    s.phase = 'pre';
+    render();
+  });
+  modal.querySelector('#fv-confirm').addEventListener('click', () => {
+    const wt = parseFloat(modal.querySelector('#first-variant-weight').value);
+    if (isNaN(wt) || wt < 0) return;
+    store.initLift(lift.id, wt, variant);
+    modal.remove();
+    const liftSt = store.getLift(lift.id, variant);
+    let weight   = liftSt ? liftSt.weight : wt;
+    if (s.deload) weight = applyDeload(weight);
+    s.currentWeight = weight;
+    s.currentReps   = topOfRange(lift);
+    saveGymState();
+    render();
+  });
+}
+
 function topOfRange(lift) {
   return lift ? lift.repsMax : 10;
 }
 
 function currentLift() { return s.lifts[s.liftIndex]; }
+
 function currentLiftWeight() {
-  const lift   = currentLift();
-  const liftSt = lift ? store.getLift(lift.id) : null;
+  const lift    = currentLift();
+  const variant = lift ? variantFor(lift.id) : null;
+  const liftSt  = lift ? store.getLift(lift.id, variant) : null;
   return liftSt ? liftSt.weight : DEFAULT_WEIGHTS[lift?.id] ?? 0;
 }
 
@@ -525,34 +663,36 @@ function missionCardHTML(lift, liftSt) {
   const lastTotal = sumReps(lastReps);
   const banked    = sumReps(s.currentSets.map(set => set.reps));
   const hasSets   = s.currentSets.length > 0;
+  const unit      = lift.isTime ? ' sec' : ' reps';
+  const unitShort = lift.isTime ? ' sec' : '';
 
   let lastLine, missionLine, borderColor, textColor;
 
   if (!lastReps) {
-    lastLine    = 'First time at this weight';
-    missionLine = `Establish baseline (≥${lift.repsMin * lift.sets} reps total)`;
+    lastLine    = lift.isTime ? 'First time at this hold' : 'First time at this weight';
+    missionLine = `Establish baseline (≥${lift.repsMin * lift.sets}${unit} total)`;
     borderColor = 'var(--border)';
     textColor   = 'var(--text2)';
   } else if (!hasSets) {
-    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
-    missionLine = `Mission: beat ${lastTotal} to win · hit ${lastTotal} to hold`;
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal}${unit})`;
+    missionLine = `Mission: beat ${lastTotal}${unitShort} to win · hit ${lastTotal}${unitShort} to hold`;
     borderColor = 'var(--border)';
     textColor   = 'var(--text)';
   } else if (banked > lastTotal) {
-    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
-    missionLine = `${banked} banked. ✓ WINNING. +${banked - lastTotal} reps.`;
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal}${unit})`;
+    missionLine = `${banked}${unitShort} banked. ✓ WINNING. +${banked - lastTotal}${unitShort}.`;
     borderColor = 'var(--lime)';
     textColor   = 'var(--lime)';
   } else if (banked === lastTotal) {
-    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
-    missionLine = `${banked} banked. ✓ HOLDING. 1+ on next sets to win.`;
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal}${unit})`;
+    missionLine = `${banked}${unitShort} banked. ✓ HOLDING. 1+ on next sets to win.`;
     borderColor = 'var(--amber)';
     textColor   = 'var(--amber)';
   } else {
     const toWin  = lastTotal + 1 - banked;
     const toHold = lastTotal - banked;
-    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal} reps)`;
-    missionLine = `${banked} banked. Need ${toWin} to win · ${toHold} to hold.`;
+    lastLine    = `Last: ${lastReps.join(', ')} (${lastTotal}${unit})`;
+    missionLine = `${banked}${unitShort} banked. Need ${toWin}${unitShort} to win · ${toHold}${unitShort} to hold.`;
     borderColor = 'var(--border)';
     textColor   = 'var(--text)';
   }
@@ -566,21 +706,33 @@ function missionCardHTML(lift, liftSt) {
 }
 
 function renderLift() {
-  const lift   = currentLift();
+  const lift    = currentLift();
   if (!lift) { finishSession(); return; }
-  const liftSt = store.getLift(lift.id);
+  const variant = variantFor(lift.id);
+  const liftSt  = store.getLift(lift.id, variant);
 
   const setsDone = s.currentSets.length;
   const setsDots = Array.from({ length: lift.sets }, (_, i) =>
     `<div class="set-dot ${i < setsDone ? 'done' : ''}"></div>`
   ).join('');
 
-  const weightDisplay = s.currentWeight === 0 ? 'Bodyweight' : `${s.currentWeight} kg`;
+  const weightSection = lift.isTime ? '' : `
+    <div class="set-weight-display" id="weight-display">
+      ${s.currentWeight === 0 ? 'Bodyweight' : `${s.currentWeight} kg`} <span class="set-weight-edit-icon">✎</span>
+    </div>`;
+
+  const unitLabel = lift.isTime
+    ? `<div style="font-size:13px;color:var(--text2);text-align:center;margin-top:4px;letter-spacing:.05em">sec</div>`
+    : '';
+
+  const headerLabel = variant
+    ? `${lift.name} · ${variant.toUpperCase()}`
+    : lift.name;
 
   el_ref.innerHTML = `
     <div class="gym-wrap">
       <div class="lift-header">
-        <div class="gym-phase-label">${lift.name}</div>
+        <div class="gym-phase-label">${headerLabel}</div>
         <div class="skip-link" id="skip-lift-btn">skip lift →</div>
       </div>
 
@@ -588,14 +740,13 @@ function renderLift() {
 
       <div class="set-input-area">
         <div class="set-label">SET ${setsDone + 1} of ${lift.sets}</div>
-        <div class="set-weight-display" id="weight-display">
-          ${weightDisplay} <span class="set-weight-edit-icon">✎</span>
-        </div>
+        ${weightSection}
         <div class="rep-controls">
           <button class="rep-btn" id="rep-minus">−</button>
           <div class="rep-number" id="rep-number">${s.currentReps}</div>
           <button class="rep-btn" id="rep-plus">+</button>
         </div>
+        ${unitLabel}
         <button class="btn btn-primary" id="set-complete-btn" style="font-size:18px;min-height:60px">
           Set complete
         </button>
@@ -614,6 +765,8 @@ function renderLift() {
 }
 
 function bindLiftEvents() {
+  const lift = currentLift();
+
   el_ref.querySelector('#rep-minus').addEventListener('click', () => {
     s.currentReps = Math.max(0, s.currentReps - 1);
     document.getElementById('rep-number').textContent = s.currentReps;
@@ -627,9 +780,11 @@ function bindLiftEvents() {
     logSet();
   });
 
-  el_ref.querySelector('#weight-display').addEventListener('click', () => {
-    showWeightEdit();
-  });
+  if (!lift.isTime) {
+    el_ref.querySelector('#weight-display').addEventListener('click', () => {
+      showWeightEdit();
+    });
+  }
 
   el_ref.querySelector('#skip-lift-btn').addEventListener('click', () => {
     skipLift();
@@ -667,7 +822,9 @@ function renderRest() {
   const lift = currentLift();
   const nextSetNum = s.currentSets.length + 1;
   const nextTarget = lift ? topOfRange(lift) : 0;
-  const nextWeightStr = s.currentWeight === 0 ? 'BW' : `${s.currentWeight}kg`;
+  const nextDetail = lift && lift.isTime
+    ? `target ${nextTarget} sec`
+    : `${s.currentWeight === 0 ? 'BW' : `${s.currentWeight}kg`} · target ${nextTarget}`;
 
   el_ref.innerHTML = `
     <div class="gym-wrap rest-screen">
@@ -677,7 +834,7 @@ function renderRest() {
         <div class="rest-bar-fill" id="rest-bar" style="width:100%"></div>
       </div>
       <div class="rest-next">
-        Next: Set ${nextSetNum} of ${lift ? lift.sets : '?'} · ${nextWeightStr} · target ${nextTarget}
+        Next: Set ${nextSetNum} of ${lift ? lift.sets : '?'} · ${nextDetail}
       </div>
       <div class="rest-controls">
         <button class="btn btn-ghost btn-sm" id="rest-plus">+30s</button>
@@ -709,8 +866,8 @@ function tickRest() {
   const secs      = Math.ceil(remaining / 1000);
   const pct       = Math.round((remaining / s.restTotalMs) * 100);
 
-  const el_cd  = document.getElementById('rest-countdown');
-  const el_bar = document.getElementById('rest-bar');
+  const el_cd    = document.getElementById('rest-countdown');
+  const el_bar   = document.getElementById('rest-bar');
   const el_flash = document.getElementById('rest-flash');
 
   if (el_cd)  el_cd.textContent  = time.formatMinSec(secs);
@@ -741,14 +898,14 @@ function tickRest() {
 
 function completeLift() {
   cancelRaf();
-  const lift   = currentLift();
-  const liftSt = store.getLift(lift.id);
+  const lift    = currentLift();
+  const variant = variantFor(lift.id);
+  const liftSt  = store.getLift(lift.id, variant);
   const currentRepsArray = s.currentSets.map(set => set.reps);
   const prevLastReps     = liftSt ? liftSt.lastReps : null;
   const state            = sessionState(currentRepsArray, prevLastReps);
   const allAtMax         = hitTopOfRangeAllSets(currentRepsArray, lift.repsMax);
 
-  // Build session entry — includes state and prevLastReps for renderBetween/Summary
   const entry = {
     date: time.today(),
     sets: s.currentSets.slice(),
@@ -757,16 +914,15 @@ function completeLift() {
     weight: s.currentWeight,
     state,
     prevLastReps,
+    variant: variant || undefined,
   };
 
-  // Persist session lift entry
   const todayDate    = time.today();
   const session      = store.getSession(todayDate) || {};
   const sessionLifts = { ...(session.lifts || {}) };
   sessionLifts[lift.id] = entry;
   store.setSession(todayDate, { lifts: sessionLifts });
 
-  // Update consecutiveTopOfRange (frozen during deload)
   let newConsec = liftSt ? (liftSt.consecutiveTopOfRange || 0) : 0;
   if (!s.deload) {
     newConsec = allAtMax ? newConsec + 1 : 0;
@@ -781,7 +937,7 @@ function completeLift() {
     history,
     lastReps: currentRepsArray,
     consecutiveTopOfRange: newConsec,
-  });
+  }, variant);
 
   s.phase = 'between';
   saveGymState();
@@ -790,7 +946,8 @@ function completeLift() {
 
 function renderBetween() {
   const lift      = currentLift();
-  const liftSt    = store.getLift(lift.id);
+  const variant   = variantFor(lift.id);
+  const liftSt    = store.getLift(lift.id, variant);
   const todayDate = time.today();
   const session   = store.getSession(todayDate) || {};
   const entry     = (session.lifts || {})[lift.id];
@@ -815,7 +972,6 @@ function renderBetween() {
   else if (state === 'miss')     stateDetail = `${lastTotal} → ${currentTotal} (−${lastTotal - currentTotal} reps)`;
   else                           stateDetail = `${currentTotal} reps logged`;
 
-  // Progression prompts (skipped during deload)
   const allAtMax    = hitTopOfRangeAllSets(currentRepsArray, lift.repsMax);
   const belowMin    = shouldSuggestDeload(currentRepsArray, lift.repsMin);
   const newConsec   = liftSt ? (liftSt.consecutiveTopOfRange || 0) : 0;
@@ -873,9 +1029,13 @@ function renderBetween() {
     nextBtn = `<button class="btn btn-primary" id="finish-btn">Finish session →</button>`;
   }
 
+  const headerLabel = variant
+    ? `${lift.name} · ${variant.toUpperCase()} · Done`
+    : `${lift.name} · Done`;
+
   el_ref.innerHTML = `
     <div class="gym-wrap between-lifts">
-      <div class="gym-phase-label">${lift.name} · Done</div>
+      <div class="gym-phase-label">${headerLabel}</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <span style="font-size:20px;font-weight:800;color:${cfg.color}">${cfg.badge}</span>
         <span style="font-size:14px;color:var(--text2)">${stateDetail}</span>
@@ -885,9 +1045,8 @@ function renderBetween() {
       ${nextBtn}
     </div>`;
 
-  // Graduation buttons
   el_ref.querySelector('#graduate-btn')?.addEventListener('click', () => {
-    store.setLift(lift.id, { weight: nextWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    store.setLift(lift.id, { weight: nextWeight, lastReps: null, consecutiveTopOfRange: 0 }, variant);
     el_ref.querySelector('#graduate-btn').disabled = true;
     el_ref.querySelector('#stay-btn').disabled = true;
     el_ref.querySelector('#graduate-btn').textContent = `✓ ${nextWeight}kg set for next session`;
@@ -898,7 +1057,7 @@ function renderBetween() {
     el_ref.querySelector('#stay-btn').textContent = '✓ Staying';
   });
   el_ref.querySelector('#drop-btn')?.addEventListener('click', () => {
-    store.setLift(lift.id, { weight: prevWeight, lastReps: null, consecutiveTopOfRange: 0 });
+    store.setLift(lift.id, { weight: prevWeight, lastReps: null, consecutiveTopOfRange: 0 }, variant);
     el_ref.querySelector('#drop-btn').disabled = true;
     el_ref.querySelector('#keep-btn').disabled = true;
     el_ref.querySelector('#drop-btn').textContent = `✓ ${prevWeight}kg set for next session`;
@@ -975,12 +1134,19 @@ function renderSummary() {
     .map(([id, entry]) => {
       const lift = liftById(id);
       if (!lift) return '';
-      const state    = entry.state || 'baseline';
-      const cfg      = STATE_CFG[state] || STATE_CFG.baseline;
-      const weightStr = entry.weight === 0 ? 'BW' : `${entry.weight}kg`;
-      const currTotal = sumReps((entry.sets || []).map(set => set.reps));
-      const prevTotal = sumReps(entry.prevLastReps);
-      const repLine   = state === 'baseline' ? `${currTotal} reps` : `${prevTotal} → ${currTotal}`;
+      const state      = entry.state || 'baseline';
+      const cfg        = STATE_CFG[state] || STATE_CFG.baseline;
+      const weightStr  = lift.isTime ? '' : (entry.weight === 0 ? 'BW' : `${entry.weight}kg`);
+      const currTotal  = sumReps((entry.sets || []).map(set => set.reps));
+      const prevTotal  = sumReps(entry.prevLastReps);
+      const unit       = lift.isTime ? ' sec' : ' reps';
+      const repLine    = state === 'baseline'
+        ? `${currTotal}${unit}`
+        : `${prevTotal} → ${currTotal}${unit}`;
+      const entryVariant = entry.variant || null;
+      const vtag       = (entryVariant && store.VARIANT_LIFTS.has(id))
+        ? variantTagHTML(entryVariant)
+        : '';
 
       if (state === 'win')           wins++;
       else if (state === 'hold')     holds++;
@@ -992,7 +1158,7 @@ function renderSummary() {
               padding-left:10px;display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:14px;font-weight:600">
-              ${lift.name} <span style="font-weight:400;color:var(--text2)">${weightStr}</span>
+              ${lift.name}${vtag}${weightStr ? ` <span style="font-weight:400;color:var(--text2)">${weightStr}</span>` : ''}
             </div>
             <div style="font-size:12px;color:var(--text2)">${repLine}</div>
           </div>
@@ -1005,7 +1171,7 @@ function renderSummary() {
   if (holds > 0)     tallyParts.push(`Held: ${holds}`);
   if (misses > 0)    tallyParts.push(`Missed: ${misses}`);
   if (baselines > 0) tallyParts.push(`Baselines: ${baselines}`);
-  const tallyLine    = tallyParts.join(' · ') || '—';
+  const tallyLine      = tallyParts.join(' · ') || '—';
   const showDisruption = misses > 0;
 
   el_ref.innerHTML = `
@@ -1057,7 +1223,6 @@ function renderSummary() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-
 function showWeightEdit() {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -1091,6 +1256,7 @@ function saveGymState() {
       currentSets: s.currentSets,
       currentWeight: s.currentWeight,
       currentReps: s.currentReps,
+      liftVariants: s.liftVariants,
     }
   });
 }
