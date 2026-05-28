@@ -2,21 +2,24 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #0f0f0f;
-  --surface:   #1a1a1a;
-  --surface2:  #242424;
-  --border:    #2e2e2e;
-  --text:      #f0f0f0;
-  --text2:     #888;
-  --text3:     #555;
-  --lime:      #c4ff3d;
-  --lime-dim:  rgba(196,255,61,.12);
-  --amber:     #f5a623;
-  --red:       #ff4d4d;
-  --green:     #4caf50;
-  --tap:       48px;
-  --radius:    12px;
-  --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --bg:          #f7f7f9;
+  --surface:     #ffffff;
+  --surface2:    #f0f0f4;
+  --border:      #e5e4ee;
+  --text:        #1a1a2e;
+  --text2:       #999999;
+  --text3:       #cccccc;
+  --lime:        #7f77dd;
+  --lime-dim:    #eeedfe;
+  --accent:      #7f77dd;
+  --accent-dim:  #eeedfe;
+  --accent-dark: #534ab7;
+  --amber:       #f5a623;
+  --red:         #ff4d4d;
+  --green:       #4caf50;
+  --tap:         48px;
+  --radius:      12px;
+  --font:        -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 html { height: 100%; }
@@ -345,7 +348,7 @@ input  { font-family: inherit; }
   transition: .2s;
 }
 input:checked + .toggle-slider { background: var(--lime); }
-input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+input:checked + .toggle-slider::before { transform: translateX(20px); background: #fff; }
 
 /* ─── Today screen ──────────────────────────────── */
 .today-wrap { padding: 0 16px 100px; }
@@ -476,7 +479,7 @@ input:checked + .toggle-slider::before { transform: translateX(20px); background
   padding: 14px 16px;
   margin-bottom: 12px;
 }
-.banner-sunday { background: var(--lime-dim); border: 1px solid rgba(196,255,61,.3); }
+.banner-sunday { background: var(--lime-dim); border: 1px solid rgba(127,119,221,.3); }
 .banner-monday { background: rgba(245,166,35,.08); border: 1px solid rgba(245,166,35,.3); }
 .banner-isak   { background: var(--surface); border: 1px solid var(--border); }
 
@@ -654,7 +657,7 @@ input:checked + .toggle-slider::before { transform: translateX(20px); background
   z-index: 50;
 }
 .rest-flash.amber-flash { background: rgba(245,166,35,.3); color: var(--amber); }
-.rest-flash.lime-flash  { background: rgba(196,255,61,.2);  color: var(--lime);  }
+.rest-flash.lime-flash  { background: rgba(127,119,221,.2);  color: var(--lime);  }
 .rest-flash.show { opacity: 1; }
 
 /* Between lifts */
@@ -952,7 +955,7 @@ input:checked + .toggle-slider::before { transform: translateX(20px); background
 
 .ready-section {
   background: var(--lime-dim);
-  border: 1px solid rgba(196,255,61,.3);
+  border: 1px solid rgba(127,119,221,.3);
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 12px;

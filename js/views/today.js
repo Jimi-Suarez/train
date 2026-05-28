@@ -1,428 +1,248 @@
 import * as store from '../store.js';
 import * as time from '../time.js';
 import * as nutrition from '../nutrition.js';
-import { SESSIONS, KPI_LIFTS } from '../programme.js';
-import { sumReps } from '../scoring.js';
+import { KPI_LIFTS } from '../programme.js';
+import { loadRoutineState, saveRoutineState, clearRoutineState, BLOCKS } from './routine.js';
 
 const KPI_NAMES = {
-  'incline-bb': 'Incline Press',
+  'incline-bb': 'Incline',
   'deadlift':   'Deadlift',
-  'squat':      'Back Squat',
+  'squat':      'Squat',
   'pullup':     'Pull-ups',
 };
 
-const SESSION_SEQUENCE = ['push', 'pull', 'legs', 'full'];
+const TAG_COLORS = {
+  train:  'var(--accent)',
+  work:   '#4a9eff',
+  learn:  '#f5a623',
+  family: '#ff6b6b',
+  rest:   'var(--text2)',
+};
 
-const GTG_MAX = 6;
+export function mount(el) {
+  render(el);
+}
 
-const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+export function unmount() {}
 
-function sessionCard(nextSessionIndex, todayDate, sessions) {
-  const todaySession = sessions[todayDate];
-  const isStarted   = todaySession && todaySession.startedAt;
-  const isCompleted = todaySession && todaySession.completedAt;
+function render(el) {
+  const state      = store.getState();
+  const todayDate  = time.today();
+  const routine    = loadRoutineState();
+  const isToday    = !!(routine && routine.date === todayDate);
+  const isDone     = isToday && routine.completedIndex >= BLOCKS[routine.dayType].length;
 
-  const sessionId = isCompleted
-    ? (todaySession.sessionId || SESSION_SEQUENCE[nextSessionIndex])
-    : SESSION_SEQUENCE[nextSessionIndex];
-  const session = SESSIONS[sessionId];
-  if (!session) return '';
+  el.innerHTML = `
+    <div style="padding:16px 16px 100px">
+      ${zone1(routine, isToday, isDone, todayDate)}
+      ${zone2(routine, isToday, isDone)}
+      ${zone3(state, todayDate)}
+    </div>`;
 
-  if (isCompleted) {
-    return `
-      <div class="session-card" id="session-card" data-action="gym">
-        <div class="session-card-icon">${session.icon}</div>
-        <div class="session-card-name">${session.name} Day</div>
-        <div class="session-card-cta" style="color:var(--lime)">Session complete ✓</div>
-      </div>`;
-  }
+  bindEvents(el, state, todayDate, routine, isToday, isDone);
+}
 
-  const cta = isStarted ? 'Resume session →' : 'Start session →';
+// ─── Zone 1: Right now ───────────────────────────────────────────────────────
+
+function zone1(routine, isToday, isDone, todayDate) {
+  if (!isToday)  return dayPickerHTML();
+  if (isDone)    return routineDoneHTML();
+  return currentBlockHTML(routine);
+}
+
+function dayPickerHTML() {
   return `
-    <div class="session-card" id="session-card" data-action="gym">
-      <div class="session-card-icon">${session.icon}</div>
-      <div class="session-card-name">${session.name} Day</div>
-      <div class="session-card-sub">${session.lifts.length} lifts · ~60 min</div>
-      <div class="session-card-cta">${cta}</div>
+    <div style="margin-bottom:16px">
+      <div class="section-label" style="margin-bottom:12px">Today</div>
+      ${pickCard('gym',   'Gym day',        'Train · Rodsuco · Babel · family')}
+      ${pickCard('run',   'Run day',        'Run · Rodsuco · Babel · family')}
+      ${pickCard('batch', 'Batch cook day', 'Cook · Rodsuco · Babel · family')}
     </div>`;
 }
 
-const STATE_BADGE = {
-  win:      { label: 'WIN',      color: '#22c55e' },
-  hold:     { label: 'HELD',     color: 'var(--lime)' },
-  miss:     { label: 'MISS',     color: 'var(--amber)' },
-  baseline: { label: 'BASELINE', color: 'var(--text2)' },
-};
-
-function resultBadge(stateVal) {
-  const cfg = stateVal ? STATE_BADGE[stateVal] : null;
-  if (!cfg) return '<span style="color:var(--text3)">—</span>';
-  return `<span style="font-size:11px;font-weight:700;color:${cfg.color}">${cfg.label}</span>`;
+function pickCard(type, title, sub) {
+  return `
+    <div class="routine-pick-card" data-type="${type}" style="
+      background:var(--surface);border:0.5px solid var(--border);
+      border-radius:14px;padding:18px 20px;margin-bottom:10px;cursor:pointer;
+    ">
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:3px">${title}</div>
+      <div style="font-size:12px;color:var(--text2)">${sub}</div>
+    </div>`;
 }
 
-function latestDateInVariantState(vSt) {
-  if (!vSt) return null;
-  if (vSt.lastSession?.date) return vSt.lastSession.date;
-  const hist = vSt.history || [];
-  return hist.length > 0 ? hist[hist.length - 1].date : null;
+function currentBlockHTML(routine) {
+  const block = BLOCKS[routine.dayType][routine.completedIndex];
+  const tagColor = TAG_COLORS[block.tag] || 'var(--text2)';
+  return `
+    <div style="
+      background:var(--surface);border-radius:14px;
+      border-left:4px solid var(--accent);
+      padding:20px 20px 20px 16px;margin-bottom:12px;
+    ">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${tagColor}">${block.tag}</span>
+        <button id="routine-restart" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:0;line-height:1">restart</button>
+      </div>
+      <div style="font-size:34px;font-weight:800;color:var(--text);line-height:1.1;margin-bottom:6px">${block.title}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:18px">${block.sub}</div>
+      <button id="done-btn" style="
+        width:100%;min-height:48px;background:var(--accent);color:#fff;
+        border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;
+      ">Done →</button>
+    </div>`;
+}
+
+function routineDoneHTML() {
+  return `
+    <div style="
+      background:var(--surface);border-radius:14px;
+      border-left:4px solid var(--accent);
+      padding:20px 20px 20px 16px;margin-bottom:12px;
+    ">
+      <div style="font-size:34px;font-weight:800;color:var(--text);margin-bottom:6px">Day complete</div>
+      <div style="font-size:12px;color:var(--text2)">Good work. See you tomorrow.</div>
+    </div>`;
+}
+
+// ─── Zone 2: Progress ────────────────────────────────────────────────────────
+
+function zone2(routine, isToday, isDone) {
+  if (!isToday || isDone) return '';
+
+  const blocks  = BLOCKS[routine.dayType];
+  const total   = blocks.length;
+  const done    = routine.completedIndex;
+  const next    = done + 1 < total ? blocks[done + 1] : null;
+
+  const pills = Array.from({ length: total }, (_, i) => {
+    const bg = i < done ? '#d0cff0' : i === done ? 'var(--accent)' : '#eaeaef';
+    return `<div style="flex:1;height:3px;border-radius:2px;background:${bg}"></div>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;gap:3px;margin-bottom:6px">${pills}</div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:11px;color:var(--text2)">${done} of ${total} done</span>
+        <span style="font-size:11px;color:var(--text2)">${total - done} remaining</span>
+      </div>
+    </div>
+    ${next ? `
+      <div style="
+        background:var(--surface);border:0.5px solid var(--border);border-radius:14px;
+        padding:14px 18px;margin-bottom:16px;
+        display:flex;align-items:center;justify-content:space-between;gap:12px;
+      ">
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--text2)">${next.title}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">${next.sub}</div>
+        </div>
+        <div style="color:var(--text3);font-size:18px;flex-shrink:0">›</div>
+      </div>` : ''}`;
+}
+
+// ─── Zone 3: Big Four + Food ─────────────────────────────────────────────────
+
+function zone3(state, todayDate) {
+  return `
+    <div class="section-label" style="margin-bottom:10px">The Big Four</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+      ${KPI_LIFTS.map(id => bigFourCard(id, state.lifts[id])).join('')}
+    </div>
+    <div class="section-label" style="margin-bottom:10px">Today's meals</div>
+    ${foodRow(state.meals[todayDate] || {})}`;
 }
 
 function resolveVariantSt(id, rawSt) {
   if (!store.VARIANT_LIFTS.has(id) || !rawSt) return { st: rawSt, variant: null };
-  const bbDate = latestDateInVariantState(rawSt.bb);
-  const dbDate = latestDateInVariantState(rawSt.db);
+  const bbDate = rawSt.bb?.lastSession?.date
+    || (rawSt.bb?.history?.length ? rawSt.bb.history[rawSt.bb.history.length - 1].date : null);
+  const dbDate = rawSt.db?.lastSession?.date
+    || (rawSt.db?.history?.length ? rawSt.db.history[rawSt.db.history.length - 1].date : null);
   let variant;
-  if (!bbDate && !dbDate) variant = 'bb';
-  else if (!bbDate) variant = 'db';
-  else if (!dbDate) variant = 'bb';
-  else variant = dbDate > bbDate ? 'db' : 'bb';
+  if      (!bbDate && !dbDate) variant = 'bb';
+  else if (!bbDate)            variant = 'db';
+  else if (!dbDate)            variant = 'bb';
+  else                         variant = dbDate > bbDate ? 'db' : 'bb';
   return { st: rawSt[variant] || null, variant };
 }
 
-function bigFourRows(liftStates) {
-  return KPI_LIFTS.map(id => {
-    const { st, variant } = resolveVariantSt(id, liftStates[id]);
-    const wt      = st ? st.weight : null;
-    const wtStr   = wt === 0 ? 'BW' : wt != null ? `${wt}kg` : '—';
-    const lastReps = st?.lastReps || null;
-    const repsStr  = lastReps ? lastReps.join(', ') : '—';
-    const total    = sumReps(lastReps);
-    const lastState = st?.lastSession?.state || null;
-    const mission  = lastReps
-      ? `Beat ${total} to win · hit ${total} to hold`
-      : (st ? 'Establish baseline' : '');
-    const variantTag = variant
-      ? `<span style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:0.05em;margin-left:4px">${variant.toUpperCase()}</span>`
-      : '';
-    return `
-      <div class="big-four-row" data-lift="${id}">
-        <div class="big-four-left">
-          <div class="big-four-name">${KPI_NAMES[id]}${variantTag}</div>
-          <div class="big-four-sub">${mission}</div>
-        </div>
-        <div class="big-four-right">
-          <span style="font-size:12px;color:var(--text2);min-width:48px;text-align:right">${repsStr}</span>
-          ${resultBadge(lastState)}
-          <div class="big-four-weight">${wtStr}</div>
-        </div>
-      </div>`;
-  }).join('');
-}
+function bigFourCard(id, rawSt) {
+  const { st, variant } = resolveVariantSt(id, rawSt);
+  const weight = st ? (st.weight === 0 ? 'BW' : `${st.weight}kg`) : '—';
+  const consec = st?.consecutiveTopOfRange || 0;
 
-function weekProgressHTML(state, todayDate) {
-  const { start, end } = time.weekStartEnd();
-  const sessions = state.sessions;
-  const completed = Object.keys(sessions)
-    .filter(d => d >= start && d <= todayDate && sessions[d].completedAt)
-    .length;
-  const target = 4;
-
-  let daysElapsed = 0;
-  let proteinHit  = 0;
-  let weekEaten   = 0;
-  let weekTotal   = 0;
-  let d = start;
-  while (d <= todayDate && d <= end) {
-    daysElapsed++;
-    const dm = state.meals[d];
-    if (dm && nutrition.computeProtein(dm) >= state.settings.proteinTarget) proteinHit++;
-    if (dm) {
-      weekTotal += nutrition.MEALS.length;
-      nutrition.MEALS.forEach(m => { if (dm[m.id] === 'eaten') weekEaten++; });
-    }
-    d = time.addDays(d, 1);
-  }
-  const proteinPct  = daysElapsed > 0 ? proteinHit / daysElapsed : 0;
-  const sessionPct  = completed / target;
-  const combined    = Math.round(((sessionPct + proteinPct) / 2) * 100);
-  const wkNum       = time.weekNumber(state.settings.startedAt);
-  const weekMealsDisp = weekTotal === 0
-    ? '0 meals logged this week'
-    : `${weekEaten}/${weekTotal} meals this week`;
-
-  return { completed, target, combined, wkNum, weekMealsDisp };
-}
-
-export function mount(el) {
-  const state    = store.getState();
-  const todayDate = time.today();
-  const dow      = time.dayOfWeek(todayDate);
-  const [y, m, d] = todayDate.split('-').map(Number);
-  const dateLabel = `${DAY_LABELS[dow]} · ${d} ${MONTH_LABELS[m - 1]}`;
-
-  const { completed, target, combined, wkNum, weekMealsDisp } = weekProgressHTML(state, todayDate);
-
-  const currentMeal = nutrition.currentMealWindow();
-  const dayMeals    = state.meals[todayDate] || {};
-
-  // Banners
-  const isSunday  = dow === 0;
-  const isMonday  = dow === 1;
-  const lastWeekData = isMonday ? computeLastWeekVerdict(state, todayDate) : null;
-  const monDismissed = isMonday && (store.getHabits(todayDate).lastWeekBannerDismissed);
-
-  el.innerHTML = `
-    <div class="today-wrap">
-      <div class="why-hint" id="why-hint">↓ pull for the why</div>
-
-      <div class="today-date">${dateLabel}</div>
-      <div class="today-week-row">
-        <div class="today-week-label">${wkNum ? `Week ${wkNum}` : ''}</div>
-        <div class="today-week-pct">${combined}%</div>
-      </div>
-      <div class="progress-bar-wrap" style="margin-bottom:6px">
-        <div class="progress-bar-fill" style="width:${combined}%"></div>
-      </div>
-      <div class="today-week-meta">
-        ${completed} of ${target} sessions · ${weekMealsDisp}
-      </div>
-
-      ${isSunday ? `
-        <div class="banner banner-sunday" id="sunday-banner">
-          <div class="banner-label">Sunday · 3 minutes for the weekly review</div>
-          <div class="banner-link" id="open-review-link">Open review →</div>
-        </div>` : ''}
-
-      ${isMonday && lastWeekData && !monDismissed ? `
-        <div class="banner banner-monday" id="monday-banner">
-          <div class="banner-label">Last week · The verdict</div>
-          <div class="banner-text">${lastWeekData.text}</div>
-          <span class="banner-link" id="dismiss-monday">Dismiss ✕</span>
-        </div>` : ''}
-
-      <div class="spacer-12"></div>
-      <div class="section-label">The Big Four</div>
-      <div class="card" style="padding:0 16px">
-        ${bigFourRows(state.lifts)}
-      </div>
-
-      <div class="section-label" style="margin-top:16px">Today</div>
-      ${sessionCard(state.settings.nextSessionIndex ?? 0, todayDate, state.sessions)}
-
-      ${gtgCardHTML(store.getHabits(todayDate).gtg || 0)}
-
-      ${currentMeal && dayMeals[currentMeal.id] == null ? `
-        <div class="meal-block" id="next-meal-block" data-meal="${currentMeal.id}">
-          <div class="meal-block-label">Next meal</div>
-          <div class="meal-block-name">${currentMeal.name}</div>
-          <div class="meal-actions">
-            <button class="meal-action-btn eaten" data-meal="${currentMeal.id}" data-state="eaten">✓ Eaten</button>
-            <button class="meal-action-btn skipped" data-meal="${currentMeal.id}" data-state="skipped">✕ Skip</button>
-          </div>
-        </div>` : ''}
-
-      <div class="meals-summary-row" id="meals-summary-row">
-        <div>
-          <div class="section-label" style="margin-bottom:6px">Today's meals</div>
-          <div style="display:flex;align-items:center;gap:10px">
-            ${mealDotsHTML(dayMeals)}
-            <span class="text-muted text-sm">${countEaten(dayMeals)} of ${nutrition.MEALS.length} on plan</span>
-          </div>
-        </div>
-        <div class="text-lime text-sm">See all →</div>
-      </div>
-    </div>`;
-
-  bindEvents(el, state, todayDate, dow);
-}
-
-function gtgCardHTML(count) {
-  const done = count >= GTG_MAX;
-  const dots = Array.from({ length: GTG_MAX }, (_, i) =>
-    `<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-       background:${i < count ? 'var(--lime)' : 'var(--surface2)'};
-       border:2px solid ${i < count ? 'var(--lime)' : 'var(--border)'}"></div>`
+  const dotBg = (i) => i < consec ? (consec >= 2 ? 'var(--accent-dark)' : 'var(--accent)') : '#eaeaef';
+  const dots  = [0, 1].map(i =>
+    `<div style="width:5px;height:5px;border-radius:50%;background:${dotBg(i)}"></div>`
   ).join('');
+
+  const variantTag = variant
+    ? `<span style="font-size:9px;color:var(--text3);margin-left:3px">${variant.toUpperCase()}</span>`
+    : '';
+
   return `
-    <div class="card" id="gtg-card" style="cursor:pointer;margin-bottom:12px">
-      <div class="section-label" style="margin-bottom:4px">Pull-up Builder</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Grease the Groove · 1 rep · never grind</div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <button class="btn btn-secondary btn-sm" id="gtg-btn"
-                style="width:auto;pointer-events:none"
-                ${done ? 'disabled' : ''}>
-          ${done ? 'Done for today ✓' : '+ Log set'}
-        </button>
-        <div id="gtg-dots" style="display:flex;gap:6px;align-items:center">${dots}</div>
-        <span id="gtg-label" class="text-muted text-sm">${count} of ${GTG_MAX}</span>
+    <div class="big-four-card" data-lift="${id}" style="
+      background:var(--surface);border:0.5px solid var(--border);
+      border-radius:14px;padding:14px;cursor:pointer;
+    ">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+        ${KPI_NAMES[id] || id}${variantTag}
       </div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);line-height:1;margin-bottom:6px">${weight}</div>
+      <div style="display:flex;gap:4px">${dots}</div>
     </div>`;
 }
 
-function updateGtg(todayDate) {
-  const count  = store.getHabits(todayDate).gtg || 0;
-  const done   = count >= GTG_MAX;
-  const btn    = document.getElementById('gtg-btn');
-  const dotsEl = document.getElementById('gtg-dots');
-  const labelEl = document.getElementById('gtg-label');
-  if (!btn || !dotsEl || !labelEl) return;
-
-  btn.textContent = done ? 'Done for today ✓' : '+ Log set';
-  btn.disabled    = done;
-
-  dotsEl.innerHTML = Array.from({ length: GTG_MAX }, (_, i) =>
-    `<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-       background:${i < count ? 'var(--lime)' : 'var(--surface2)'};
-       border:2px solid ${i < count ? 'var(--lime)' : 'var(--border)'}"></div>`
-  ).join('');
-
-  labelEl.textContent = `${count} of ${GTG_MAX}`;
-}
-
-function mealDotsHTML(dayMeals) {
-  return nutrition.MEALS.map(m => {
+function foodRow(dayMeals) {
+  const squares = nutrition.MEALS.map(m => {
     const st = dayMeals[m.id];
-    const cls = st === 'eaten' ? 'eaten' : st === 'skipped' ? 'skipped' : st === 'replaced' ? 'replaced' : '';
-    return `<div class="meal-dot ${cls}"></div>`;
+    if (st === 'eaten') {
+      return `<div style="
+        width:32px;height:32px;border-radius:10px;
+        background:var(--accent-dim);
+        display:flex;align-items:center;justify-content:center;
+        font-size:13px;font-weight:700;color:var(--accent-dark);
+      ">✓</div>`;
+    }
+    return `<div style="
+      width:32px;height:32px;border-radius:10px;
+      background:var(--surface);border:0.5px solid var(--border);
+      display:flex;align-items:center;justify-content:center;
+      font-size:11px;color:var(--text3);
+    ">·</div>`;
   }).join('');
+  return `<div id="food-row" style="display:flex;gap:8px;cursor:pointer;margin-bottom:16px">${squares}</div>`;
 }
 
-function countEaten(dayMeals) {
-  return nutrition.MEALS.filter(m => dayMeals[m.id] === 'eaten').length;
-}
+// ─── Events ──────────────────────────────────────────────────────────────────
 
-function computeLastWeekVerdict(state, todayDate) {
-  const { start: wkStart } = time.weekStartEnd(new Date(
-    ...todayDate.split('-').map((v,i) => i === 1 ? Number(v)-1 : Number(v))
-  ));
-  const prevSun = time.addDays(wkStart, -1);
-  const prevMon = time.addDays(prevSun, -6);
-
-  let total = 0, eaten = 0;
-  let d = prevMon;
-  while (d <= prevSun) {
-    const dm = state.meals[d] || {};
-    total += nutrition.MEALS.length;
-    nutrition.MEALS.forEach(m => { if (dm[m.id] === 'eaten') eaten++; });
-    d = time.addDays(d, 1);
-  }
-  const pct = total > 0 ? Math.round((eaten / total) * 100) : 0;
-  const text = pct >= 85 ? `${pct}% on plan. Strong week.`
-             : pct >= 70 ? `${pct}% on plan. On the line.`
-             : `${pct}% on plan. Reset this week.`;
-  return { pct, text };
-}
-
-function bindEvents(el, state, todayDate, dow) {
-  // Why hint
-  el.querySelector('#why-hint')?.addEventListener('click', () => {
-    document.getElementById('why-overlay').classList.add('open');
-  });
-
-  // Session card
-  el.querySelector('#session-card')?.addEventListener('click', (e) => {
-    const action = e.currentTarget.dataset.action;
-    if (action === 'gym') location.hash = '/gym';
-    else if (action === 'run') openRunLog();
-    else if (action === 'flex') location.hash = '/gym';
-  });
-
-  // Big Four tap → Levels with lift detail
-  el.querySelectorAll('.big-four-row').forEach(row => {
-    row.addEventListener('click', () => {
-      location.hash = `/levels?lift=${row.dataset.lift}`;
+function bindEvents(el, state, todayDate, routine, isToday, isDone) {
+  el.querySelectorAll('.routine-pick-card').forEach(card => {
+    card.addEventListener('click', () => {
+      saveRoutineState({ date: todayDate, dayType: card.dataset.type, completedIndex: 0 });
+      render(el);
     });
   });
 
-  // Meal buttons
-  el.querySelectorAll('.meal-action-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      store.setMeal(todayDate, btn.dataset.meal, btn.dataset.state);
-      mount(el);
+  el.querySelector('#done-btn')?.addEventListener('click', () => {
+    saveRoutineState({ ...routine, completedIndex: routine.completedIndex + 1 });
+    render(el);
+  });
+
+  el.querySelector('#routine-restart')?.addEventListener('click', () => {
+    clearRoutineState();
+    render(el);
+  });
+
+  el.querySelectorAll('.big-four-card').forEach(card => {
+    card.addEventListener('click', () => {
+      location.hash = `/levels?lift=${card.dataset.lift}`;
     });
   });
 
-  // Meals summary → food
-  el.querySelector('#meals-summary-row')?.addEventListener('click', () => {
+  el.querySelector('#food-row')?.addEventListener('click', () => {
     location.hash = '/food';
   });
-
-  // Sunday review
-  el.querySelector('#open-review-link')?.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('open-review'));
-  });
-
-  // Monday dismiss
-  el.querySelector('#dismiss-monday')?.addEventListener('click', () => {
-    store.setHabit(todayDate, 'lastWeekBannerDismissed', true);
-    el.querySelector('#monday-banner')?.remove();
-  });
-
-  // GTG card — tap anywhere to log a set
-  el.querySelector('#gtg-card')?.addEventListener('click', () => {
-    const current = store.getHabits(todayDate).gtg || 0;
-    if (current >= GTG_MAX) return;
-    store.setHabit(todayDate, 'gtg', current + 1);
-    updateGtg(todayDate);
-  });
 }
-
-function openRunLog() {
-  const todayDate = time.today();
-  const existing  = store.getHabits(todayDate).run;
-
-  const sheet = document.createElement('div');
-  sheet.className = 'modal-overlay';
-  sheet.innerHTML = `
-    <div class="modal-sheet">
-      <div class="modal-title">Log run</div>
-      <div style="margin-bottom:16px">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:6px">Distance (km)</div>
-        <input class="modal-input" type="number" step="0.1" min="0" id="run-km-input"
-               value="${existing ? existing.distance : ''}" placeholder="e.g. 5.5" style="margin-bottom:0" />
-      </div>
-      <div style="margin-bottom:20px">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:8px">How did it feel?</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          ${[['😌','Comfortable'],['😐','Neutral'],['😣','Tough']].map(([emoji, label]) => `
-            <button class="run-mood-btn btn btn-ghost" data-mood="${emoji}"
-                    style="flex-direction:column;gap:4px;min-height:56px;font-size:13px;
-                           ${existing && existing.mood === emoji ? 'border-color:var(--lime);color:var(--lime)' : ''}">
-              <span style="font-size:22px">${emoji}</span>${label}
-            </button>`).join('')}
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="run-cancel-btn">Cancel</button>
-        <button class="btn btn-primary" id="run-save-btn">Save run</button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(sheet);
-
-  let selectedMood = existing ? existing.mood : '😌';
-  sheet.querySelector(`[data-mood="${selectedMood}"]`)?.style.setProperty('border-color', 'var(--lime)');
-
-  sheet.querySelectorAll('.run-mood-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      sheet.querySelectorAll('.run-mood-btn').forEach(b => {
-        b.style.borderColor = '';
-        b.style.color = '';
-      });
-      btn.style.borderColor = 'var(--lime)';
-      btn.style.color = 'var(--lime)';
-      selectedMood = btn.dataset.mood;
-    });
-  });
-
-  sheet.querySelector('#run-cancel-btn').addEventListener('click', () => sheet.remove());
-
-  sheet.querySelector('#run-save-btn').addEventListener('click', () => {
-    const km = parseFloat(sheet.querySelector('#run-km-input').value);
-    if (!km || km <= 0) {
-      sheet.querySelector('#run-km-input').style.borderColor = 'var(--red)';
-      return;
-    }
-    store.setHabit(todayDate, 'run', { distance: km, mood: selectedMood });
-    sheet.remove();
-  });
-
-  sheet.addEventListener('click', e => {
-    if (e.target === sheet) sheet.remove();
-  });
-
-  sheet.querySelector('#run-km-input').focus();
-}
-
-export function unmount() {}
