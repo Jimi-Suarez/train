@@ -7,6 +7,7 @@
     "2025-12-13": { "weight": 89.0, "waist": 92.0, "fatMass": 19.66, "muscleMass": 35.09, "skinfoldSum": 83,  "height": 169 },
     "2026-01-17": { "weight": 89.0, "waist": 92.0, "fatMass": 19.66, "muscleMass": 35.09, "skinfoldSum": 83,  "height": 169 },
     "2026-03-19": { "weight": 88.8, "waist": 89.9, "fatMass": 20.25, "muscleMass": 34.70, "skinfoldSum": 86.5,"height": 169 },
-    "2026-04-28": { "weight": 87.2, "waist": 91.0, "fatMass": 20.33, "muscleMass": 35.88, "skinfoldSum": 87.0,"height": 169 }
+    "2026-04-28": { "weight": 87.2, "waist": 91.0, "fatMass": 20.33, "muscleMass": 35.88, "skinfoldSum": 87.0,"height": 169 },
+    "2026-05-28": { "weight": 91.7, "waist": 91.5, "fatMass": 20.99, "muscleMass": 36.58, "skinfoldSum": 91.0, "height": 169 }
   }
 }
