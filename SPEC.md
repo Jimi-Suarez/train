@@ -1118,6 +1118,7 @@ Every meaningful design decision and why it was made. **Don't reverse without up
 | 41 | isTime lifts (plank) render in seconds with no weight field | A plank is held for time, not loaded. Showing a kg field or a deload weight is meaningless and confusing. The existing double-progression scoring works fine with seconds as the unit. |
 | 42 | The variant and isTime changes were made mid-programme by explicit decision, with SPEC and code updated together | Avoids spec drift. Future readers should treat these as first-class design decisions, not workarounds. |
 | 43 | Meal plan updated per Fran (nutritionist) 28 May 2026 | No deficit detected — fat % rising. Reduced breakfast to 3 eggs, added afternoon protein snack (2 eggs / sardines), reduced yogurt dinner portion to 150–200ml + added whey scoop. Steps to increase daily. |
+| 44 | kcal target reduced from 2,050 to 1,800 per Fran (28 May 2026) | ISAK showed fat mass creeping up despite 83% adherence — deficit was not present. Fran prescribed a 250kcal/day reduction. Meal plan adjusted accordingly. |
 
 ---
 
