@@ -47,6 +47,26 @@ export function load() {
         ...parsed,
         settings: { ...def.settings, ...(parsed.settings || {}) },
       };
+
+      // Secondary recovery: main key exists but contains empty state — check backup for real data.
+      // Guards against the case where the main key was reset to defaults while backup still has history.
+      const appearsEmpty = !Object.keys(state.lifts  || {}).length
+                        && !Object.keys(state.sessions|| {}).length;
+      if (appearsEmpty) {
+        try {
+          const backup = localStorage.getItem(ROOT_KEY + '.backup');
+          if (backup) {
+            const bp = JSON.parse(backup);
+            const backupHasData = Object.keys(bp.lifts   || {}).length > 0
+                               || Object.keys(bp.sessions|| {}).length > 0;
+            if (backupHasData) {
+              console.warn('[store] State empty but backup has data — recovering from backup');
+              state = { ...def, ...bp, settings: { ...def.settings, ...(bp.settings || {}) } };
+              localStorage.setItem(ROOT_KEY, backup);
+            }
+          }
+        } catch {}
+      }
     } else {
       state = defaultState();
     }
