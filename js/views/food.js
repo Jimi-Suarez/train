@@ -275,7 +275,7 @@ function bindEvents(el, todayStr) {
   );
 
   el.querySelector('#family-meal-btn').addEventListener('click', () => {
-    const options = nutrition.MEALS.filter(m => m.id !== 'pre-train');
+    const options = nutrition.MEALS.filter(m => m.id !== 'shake');
 
     const sheet = document.createElement('div');
     sheet.className = 'modal-overlay';

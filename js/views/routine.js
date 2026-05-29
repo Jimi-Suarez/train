@@ -47,7 +47,17 @@ function localToday() {
 export function loadRoutineState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s) return null;
+    // Migrate old { completedIndex } shape → per-block { states }
+    if (s.states === undefined) {
+      const states = {};
+      const done = s.completedIndex || 0;
+      for (let i = 0; i < done; i++) states[i] = 'done';
+      return { date: s.date, dayType: s.dayType, states };
+    }
+    return s;
   } catch { return null; }
 }
 

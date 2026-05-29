@@ -2,7 +2,7 @@ import * as store from '../store.js';
 import * as time from '../time.js';
 import * as nutrition from '../nutrition.js';
 import { KPI_LIFTS } from '../programme.js';
-import { loadRoutineState, saveRoutineState, clearRoutineState, BLOCKS } from './routine.js';
+import { loadRoutineState, saveRoutineState, BLOCKS } from './routine.js';
 
 const KPI_NAMES = {
   'incline-bb': 'Incline',
@@ -19,51 +19,53 @@ const TAG_COLORS = {
   rest:   'var(--text2)',
 };
 
+const DAY_LABELS = { gym: 'Gym day', run: 'Run day', batch: 'Batch cook day' };
+
+// Transient (not persisted): are we choosing a day type right now?
+let picking = false;
+
 export function mount(el) {
+  picking = false;
   render(el);
 }
 
 export function unmount() {}
 
 function render(el) {
-  const state      = store.getState();
-  const todayDate  = time.today();
-  const routine    = loadRoutineState();
-  const isToday    = !!(routine && routine.date === todayDate);
-  const isDone     = isToday && routine.completedIndex >= BLOCKS[routine.dayType].length;
+  const state     = store.getState();
+  const todayDate = time.today();
+  const routine   = loadRoutineState();
+  const isToday   = !!(routine && routine.date === todayDate);
 
   el.innerHTML = `
     <div style="padding:16px 16px 100px">
-      ${zone1(routine, isToday, isDone, todayDate)}
-      ${zone2(routine, isToday, isDone)}
-      ${zone3(state, todayDate)}
+      ${(!isToday || picking)
+        ? pickerHTML(isToday ? routine.dayType : null)
+        : `${headerHTML(routine, todayDate)}${dayListHTML(routine)}`}
+      ${trackersHTML(state, todayDate)}
     </div>`;
 
-  bindEvents(el, state, todayDate, routine, isToday, isDone);
+  bindEvents(el, todayDate, routine, isToday);
 }
 
-// ─── Zone 1: Right now ───────────────────────────────────────────────────────
+// ─── Day-type picker ─────────────────────────────────────────────────────────
 
-function zone1(routine, isToday, isDone, todayDate) {
-  if (!isToday)  return dayPickerHTML();
-  if (isDone)    return routineDoneHTML();
-  return currentBlockHTML(routine);
-}
-
-function dayPickerHTML() {
+function pickerHTML(currentType) {
   return `
-    <div style="margin-bottom:16px">
+    <div style="margin-bottom:20px">
       <div class="section-label" style="margin-bottom:12px">Today</div>
-      ${pickCard('gym',   'Gym day',        'Train · Rodsuco · Babel · family')}
-      ${pickCard('run',   'Run day',        'Run · Rodsuco · Babel · family')}
-      ${pickCard('batch', 'Batch cook day', 'Cook · Rodsuco · Babel · family')}
+      ${pickCard('gym',   'Gym day',        'Train · Rodsuco · Babel · family', currentType)}
+      ${pickCard('run',   'Run day',        'Run · Rodsuco · Babel · family',   currentType)}
+      ${pickCard('batch', 'Batch cook day', 'Cook · Rodsuco · Babel · family',  currentType)}
     </div>`;
 }
 
-function pickCard(type, title, sub) {
+function pickCard(type, title, sub, currentType) {
+  const sel = type === currentType;
   return `
     <div class="routine-pick-card" data-type="${type}" style="
-      background:var(--surface);border:0.5px solid var(--border);
+      background:var(--surface);
+      border:${sel ? '1.5px solid var(--accent)' : '0.5px solid var(--border)'};
       border-radius:14px;padding:18px 20px;margin-bottom:10px;cursor:pointer;
     ">
       <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:3px">${title}</div>
@@ -71,80 +73,98 @@ function pickCard(type, title, sub) {
     </div>`;
 }
 
-function currentBlockHTML(routine) {
-  const block = BLOCKS[routine.dayType][routine.completedIndex];
-  const tagColor = TAG_COLORS[block.tag] || 'var(--text2)';
-  return `
-    <div style="
-      background:var(--surface);border-radius:14px;
-      border-left:4px solid var(--accent);
-      padding:20px 20px 20px 16px;margin-bottom:12px;
-    ">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${tagColor}">${block.tag}</span>
-        <button id="routine-restart" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:0;line-height:1">restart</button>
-      </div>
-      <div style="font-size:34px;font-weight:800;color:var(--text);line-height:1.1;margin-bottom:6px">${block.title}</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:18px">${block.sub}</div>
-      <button id="done-btn" style="
-        width:100%;min-height:48px;background:var(--accent);color:#fff;
-        border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;
-      ">Done →</button>
-    </div>`;
-}
+// ─── Snapshot header ─────────────────────────────────────────────────────────
 
-function routineDoneHTML() {
-  return `
-    <div style="
-      background:var(--surface);border-radius:14px;
-      border-left:4px solid var(--accent);
-      padding:20px 20px 20px 16px;margin-bottom:12px;
-    ">
-      <div style="font-size:34px;font-weight:800;color:var(--text);margin-bottom:6px">Day complete</div>
-      <div style="font-size:12px;color:var(--text2)">Good work. See you tomorrow.</div>
-    </div>`;
-}
-
-// ─── Zone 2: Progress ────────────────────────────────────────────────────────
-
-function zone2(routine, isToday, isDone) {
-  if (!isToday || isDone) return '';
-
-  const blocks  = BLOCKS[routine.dayType];
-  const total   = blocks.length;
-  const done    = routine.completedIndex;
-  const next    = done + 1 < total ? blocks[done + 1] : null;
-
-  const pills = Array.from({ length: total }, (_, i) => {
-    const bg = i < done ? '#d0cff0' : i === done ? 'var(--accent)' : '#eaeaef';
-    return `<div style="flex:1;height:3px;border-radius:2px;background:${bg}"></div>`;
-  }).join('');
+function headerHTML(routine, todayDate) {
+  const blocks = BLOCKS[routine.dayType];
+  const total  = blocks.length;
+  const done   = blocks.filter((_, i) => routine.states[i] === 'done').length;
+  const pct    = total ? Math.round((done / total) * 100) : 0;
 
   return `
-    <div style="margin-bottom:16px">
-      <div style="display:flex;gap:3px;margin-bottom:6px">${pills}</div>
-      <div style="display:flex;justify-content:space-between">
-        <span style="font-size:11px;color:var(--text2)">${done} of ${total} done</span>
-        <span style="font-size:11px;color:var(--text2)">${total - done} remaining</span>
-      </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:15px;font-weight:600;color:var(--text)">${prettyDate(todayDate)}</span>
+      <span id="daytype-chip" style="
+        font-size:12px;color:var(--accent-dark);background:var(--accent-dim);
+        padding:3px 10px;border-radius:999px;cursor:pointer;
+      ">${DAY_LABELS[routine.dayType]}</span>
     </div>
-    ${next ? `
-      <div style="
-        background:var(--surface);border:0.5px solid var(--border);border-radius:14px;
-        padding:14px 18px;margin-bottom:16px;
-        display:flex;align-items:center;justify-content:space-between;gap:12px;
-      ">
-        <div>
-          <div style="font-size:14px;font-weight:600;color:var(--text2)">${next.title}</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">${next.sub}</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;flex-shrink:0">›</div>
-      </div>` : ''}`;
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+      <div style="flex:1;height:4px;border-radius:2px;background:var(--surface2);overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:var(--accent)"></div>
+      </div>
+      <span style="font-size:12px;color:var(--text2);white-space:nowrap">${done} of ${total}</span>
+    </div>`;
 }
 
-// ─── Zone 3: Big Four + Food ─────────────────────────────────────────────────
+// ─── The day list ────────────────────────────────────────────────────────────
 
-function zone3(state, todayDate) {
+function dayListHTML(routine) {
+  const blocks     = BLOCKS[routine.dayType];
+  const currentIdx = blocks.findIndex((_, i) => !routine.states[i]);
+  const rows = blocks
+    .map((b, i) => blockRow(b, i, routine.states[i], i === currentIdx))
+    .join('');
+  return `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:22px">${rows}</div>`;
+}
+
+function blockRow(block, i, state, isCurrent) {
+  const dot = `<span style="width:6px;height:6px;border-radius:50%;background:${TAG_COLORS[block.tag] || 'var(--text2)'};flex-shrink:0"></span>`;
+
+  if (state === 'done') {
+    return row(i, `
+      ${circle(`<i class="ti ti-check" style="font-size:13px;color:var(--accent-dark)"></i>`, 'var(--accent-dim)')}
+      <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text2)">${block.title}</div></div>
+      ${dot}`, '7px 4px');
+  }
+
+  if (state === 'skipped') {
+    return row(i, `
+      ${circle(`<i class="ti ti-minus" style="font-size:13px;color:var(--text3)"></i>`, 'var(--surface2)')}
+      <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text3);text-decoration:line-through">${block.title}</div></div>
+      ${dot}`, '7px 4px');
+  }
+
+  if (isCurrent) {
+    return `
+      <div class="block-row" data-i="${i}" style="
+        display:flex;align-items:center;gap:11px;padding:13px 12px;cursor:pointer;
+        background:var(--accent-dim);border:0.5px solid var(--accent);border-radius:12px;
+      ">
+        <span style="width:22px;height:22px;border-radius:50%;border:2px solid var(--accent);flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:600;color:var(--text)">${block.title}</div>
+          <div style="font-size:12px;color:var(--accent-dark);margin-top:1px;line-height:1.5">${block.sub}</div>
+        </div>
+        <span style="font-size:12px;color:var(--accent-dark);white-space:nowrap">Done <i class="ti ti-arrow-right" style="font-size:12px;vertical-align:-1px"></i></span>
+      </div>`;
+  }
+
+  // pending, not current
+  return row(i, `
+    <span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0"></span>
+    <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text)">${block.title}</div></div>
+    ${dot}`, '7px 4px');
+}
+
+function row(i, inner, padding) {
+  return `<div class="block-row" data-i="${i}" style="display:flex;align-items:center;gap:11px;padding:${padding};cursor:pointer">${inner}</div>`;
+}
+
+function circle(inner, bg) {
+  return `<span style="width:22px;height:22px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">${inner}</span>`;
+}
+
+function prettyDate(iso) {
+  const d  = new Date(`${iso}T00:00:00`);
+  const wd = d.toLocaleDateString('en-GB', { weekday: 'long' });
+  const dm = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+  return `${wd} ${dm}`;
+}
+
+// ─── Trackers: Big Four + Food ───────────────────────────────────────────────
+
+function trackersHTML(state, todayDate) {
   return `
     <div class="section-label" style="margin-bottom:10px">The Big Four</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
@@ -218,22 +238,37 @@ function foodRow(dayMeals) {
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
-function bindEvents(el, state, todayDate, routine, isToday, isDone) {
+function bindEvents(el, todayDate, routine, isToday) {
+  // Pick / switch day type
   el.querySelectorAll('.routine-pick-card').forEach(card => {
     card.addEventListener('click', () => {
-      saveRoutineState({ date: todayDate, dayType: card.dataset.type, completedIndex: 0 });
+      const type = card.dataset.type;
+      if (isToday && routine.dayType === type) {
+        picking = false;                       // same type → just close
+      } else {
+        saveRoutineState({ date: todayDate, dayType: type, states: {} });
+        picking = false;
+      }
       render(el);
     });
   });
 
-  el.querySelector('#done-btn')?.addEventListener('click', () => {
-    saveRoutineState({ ...routine, completedIndex: routine.completedIndex + 1 });
+  el.querySelector('#daytype-chip')?.addEventListener('click', () => {
+    picking = true;
     render(el);
   });
 
-  el.querySelector('#routine-restart')?.addEventListener('click', () => {
-    clearRoutineState();
-    render(el);
+  // Cycle a block: pending → done → skipped → pending
+  el.querySelectorAll('.block-row').forEach(rowEl => {
+    rowEl.addEventListener('click', () => {
+      const i   = Number(rowEl.dataset.i);
+      const cur = routine.states[i];
+      const next = cur === undefined ? 'done' : cur === 'done' ? 'skipped' : undefined;
+      const states = { ...routine.states };
+      if (next === undefined) delete states[i]; else states[i] = next;
+      saveRoutineState({ ...routine, states });
+      render(el);
+    });
   });
 
   el.querySelectorAll('.big-four-card').forEach(card => {

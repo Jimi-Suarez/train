@@ -182,8 +182,8 @@ NEXT MEAL · 13:30                          ← only shown if a meal is "due"
 Lunch — protein + carbs + veg
 [ ✓ Eaten ]  [ ⚠ Cheat ]  [ ✕ Skip ]
 
-Today's meals  2 of 5
-●●○○○ · See all →
+Today's meals  2 of 6
+●●○○○○ · See all →
 
 [Today] [Gym] [Food] [Trends] [ISAK]      ← tab bar
 ```
@@ -240,19 +240,20 @@ For the run on Saturday: tapping it opens a simple log (distance + mood emoji + 
 
 ### Next meal block
 
-Only appears within a 90-minute window before/after a meal's default time. Logic:
-- 04:30–05:30 → show pre-train shake row
+Only appears within a window around a meal's default time. Logic:
+- 05:10–06:10 → show pre-train shake row
 - 06:30–07:30 → show breakfast row
 - 13:00–14:00 → show lunch row
+- 17:00–18:00 → show snack row
 - 20:00–21:00 → show dinner row
-- 21:30–22:30 → show dessert row
+- 21:10–22:10 → show dessert row
 - Outside windows → block hidden
 
 Three big buttons: **Eaten / Cheat / Skip.** Tap → updates meal state, block disappears.
 
 ### Today's meals summary
 
-Five dots (`●●○○○`) showing today's meal states:
+Six dots (`●●○○○○`) showing today's meal states:
 - ● filled = eaten
 - ⚠ amber = cheat
 - ✕ red = skipped
@@ -564,15 +565,16 @@ Tick-box meal logging. The user knows what they're eating; the app records adher
 TODAY · 4 May
 ─────────────────────────────────
 Protein  ███████░░░░  98 / 150g
-Meals    ●●○○○         2 of 5 on plan
+Meals    ●●○○○○        2 of 6 on plan
 Bites    🍪🍪🍪          3 today
 ─────────────────────────────────
 
-05:00  Pre-train shake               [✓] [⚠] [✕]
-07:00  Pa amb tomàquet + 4 eggs      [✓] [⚠] [✕]
-13:30  Lunch — protein + carbs + veg [✓] [⚠] [✕]    ← prominent if it's near 13:30
-20:30  Yogurt bowl                   [✓] [⚠] [✕]
-21:30  Dark chocolate + nuts         [✓] [⚠] [✕]
+05:40  Pre-train shake + creatine                          [✓] [⚠] [✕]
+07:00  100g bread + tomato + 3 eggs                        [✓] [⚠] [✕]
+13:30  200g chicken + 160-180g potato/rice + 150-200g veg  [✓] [⚠] [✕]    ← prominent if it's near 13:30
+17:30  2 eggs                                              [✓] [⚠] [✕]
+20:30  1 yogurt + scoop whey + 30-50g berries + 25-30g nuts [✓] [⚠] [✕]
+21:30  Dark chocolate - 1-2 cubes                          [✓] [⚠] [✕]
 
 ─────────────────────────────────
 [ 🍽️  Family meal ]    [ 🍪 Bite (×3 today) ]
@@ -616,7 +618,7 @@ For now: no kcal/protein impact. Just a count. Reviewed at the next ISAK measure
 
 Three rows:
 - **Protein bar**: filled = sum of (eaten meals' protein), target = 150g
-- **Meals**: 5 dots reflecting state
+- **Meals**: 6 dots reflecting state
 - **Bites**: emoji count
 
 ### 4.6 Day navigation
@@ -1087,7 +1089,7 @@ Every meaningful design decision and why it was made. **Don't reverse without up
 | 10 | Smart rest timer per lift type (3/2/1.5min) | Standard sport-science recommendations |
 | 11 | Visual-only timer alerts (no sound/vibration) | User in noisy gym, doesn't want to be rude |
 | 12 | Auto-start rest on "Set complete" | Zero friction — user just rests |
-| 13 | Pre-set 5 meals, tick-box only | User knows what they eat; app's job is adherence tracking |
+| 13 | Pre-set 6 meals, tick-box only | User knows what they eat; app's job is adherence tracking |
 | 14 | Three meal states: Eaten/Cheat/Skip | Captures the three real outcomes |
 | 15 | Family meal replaces a planned slot | Asks user which slot, keeps the math honest |
 | 16 | Bite is a counter, no kcal/protein | Start simple, decide at next ISAK if more is needed |
