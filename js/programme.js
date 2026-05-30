@@ -31,10 +31,10 @@ export const SESSIONS = {
     icon: '⤳',
     note: 'Biggest muscles = biggest calorie burn.',
     lifts: [
-      { id: 'squat',     name: 'Back Squat / Goblet Squat', sets: 4, repsMin: 8,  repsMax: 10, increment: 5, kpi: true, firstLift: true, restSeconds: 180, note: 'Goblet if technique needs work. Depth over weight. Chest up.' },
+      { id: 'squat',     name: 'Back Squat / Goblet Squat', sets: 4, repsMin: 8,  repsMax: 10, increment: 5, kpi: true, firstLift: true, restSeconds: 180, note: 'Full depth — ass to grass. Depth over weight. Chest up.' },
       { id: 'rdl',       name: 'Romanian Deadlift',          sets: 3, repsMin: 8,  repsMax: 10, increment: 2.5,                           restSeconds: 120, note: 'Hinge at hips, soft knee. Feel the hamstring stretch.' },
       { id: 'leg-press', name: 'Leg Press',                  sets: 3, repsMin: 10, repsMax: 12, increment: 5,                             restSeconds: 120, note: 'High foot placement. Push through heels. Don\'t lock knees.' },
-      { id: 'back-ext',  name: 'Back Extensions',            sets: 3, repsMin: 10, repsMax: 12, increment: 2.5,                           restSeconds: 90,  note: 'Slow, controlled. No hyperextension at the top.' },
+      { id: 'back-ext',  name: 'Back Extensions',            sets: 3, repsMin: 10, repsMax: 12, increment: 0,                             restSeconds: 90,  note: 'Full depth, pause at the bottom. Bodyweight only — no weight added until decided.' },
       { id: 'leg-curl',  name: 'Leg Curl',                   sets: 3, repsMin: 10, repsMax: 12, increment: 2.5,                           restSeconds: 90,  note: 'Hamstring isolation. 3 seconds down. Don\'t cheat the hip.' },
     ],
   },
