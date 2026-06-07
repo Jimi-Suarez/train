@@ -17,11 +17,12 @@ function render(el) {
   const state    = store.getState();
   const todayStr = time.today();
   const dayMeals = store.getMeals(currentDate) || {};
+  const meals    = nutrition.mealsForDay(currentDate);
   const tapas    = dayMeals.tapa    || 0;
   const bites    = dayMeals.bites   || 0;
   const fruit    = dayMeals.fruit   || 0;
   const alcohol  = dayMeals.alcohol || 0;
-  const protein  = nutrition.computeProtein(dayMeals);
+  const protein  = nutrition.computeProtein(dayMeals, currentDate);
   const target   = state.settings.proteinTarget;
   const proteinPct = Math.min(100, Math.round((protein / target) * 100));
 
@@ -57,8 +58,8 @@ function render(el) {
         <div class="food-summary-row">
           <span class="food-summary-label">Meals</span>
           <div style="display:flex;align-items:center;gap:8px">
-            ${mealDotsHTML(dayMeals)}
-            <span class="text-muted text-sm">${countEaten(dayMeals)} of ${nutrition.MEALS.length} on plan</span>
+            ${mealDotsHTML(dayMeals, meals)}
+            <span class="text-muted text-sm">${countEaten(dayMeals, meals)} of ${meals.length} on plan</span>
           </div>
         </div>
         <div class="food-summary-row" style="margin-top:4px">
@@ -72,7 +73,7 @@ function render(el) {
       </div>
 
       <div class="card" style="padding:0 16px">
-        ${nutrition.MEALS.map(meal => mealRowHTML(meal, dayMeals)).join('')}
+        ${meals.map(meal => mealRowHTML(meal, dayMeals)).join('')}
       </div>
 
       <div class="food-extras">
@@ -111,16 +112,16 @@ function mealRowHTML(meal, dayMeals) {
     </div>`;
 }
 
-function mealDotsHTML(dayMeals) {
-  return nutrition.MEALS.map(m => {
+function mealDotsHTML(dayMeals, meals) {
+  return meals.map(m => {
     const st = dayMeals[m.id];
     const cls = st === 'eaten' ? 'eaten' : st === 'skipped' ? 'skipped' : st === 'replaced' ? 'replaced' : '';
     return `<div class="meal-dot ${cls}"></div>`;
   }).join('');
 }
 
-function countEaten(dayMeals) {
-  return nutrition.MEALS.filter(m => dayMeals[m.id] === 'eaten').length;
+function countEaten(dayMeals, meals) {
+  return meals.filter(m => dayMeals[m.id] === 'eaten').length;
 }
 
 function computeLastWeek(state) {
@@ -134,6 +135,7 @@ function computeLastWeek(state) {
   const rangeLabel = `${pd} ${MONTHS[pm-1]} – ${sd} ${MONTHS[sm-1]}`;
 
   let days = 0;
+  let totalPlanned = 0;
   let eaten = 0, skipped = 0, familyCount = 0;
   let totalTapas = 0, totalBites = 0, totalFruit = 0, totalAlcohol = 0;
 
@@ -141,7 +143,9 @@ function computeLastWeek(state) {
   while (d <= prevSun) {
     days++;
     const dm = state.meals[d] || {};
-    nutrition.MEALS.forEach(meal => {
+    const dayMeals = nutrition.mealsForDay(d);
+    totalPlanned += dayMeals.length;
+    dayMeals.forEach(meal => {
       const st = dm[meal.id];
       if (st === 'eaten')    eaten++;
       if (st === 'skipped')  skipped++;
@@ -153,8 +157,6 @@ function computeLastWeek(state) {
     totalAlcohol += dm.alcohol || 0;
     d = time.addDays(d, 1);
   }
-
-  const totalPlanned = days * nutrition.MEALS.length;
   const pct        = totalPlanned > 0 ? Math.round((eaten       / totalPlanned) * 100) : 0;
   const skippedPct = totalPlanned > 0 ? Math.round((skipped     / totalPlanned) * 100) : 0;
   const familyPct  = totalPlanned > 0 ? Math.round((familyCount / totalPlanned) * 100) : 0;
@@ -275,7 +277,7 @@ function bindEvents(el, todayStr) {
   );
 
   el.querySelector('#family-meal-btn').addEventListener('click', () => {
-    const options = nutrition.MEALS.filter(m => m.id !== 'shake');
+    const options = nutrition.mealsForDay(currentDate).filter(m => m.id !== 'shake');
 
     const sheet = document.createElement('div');
     sheet.className = 'modal-overlay';

@@ -171,7 +171,7 @@ function trackersHTML(state, todayDate) {
       ${KPI_LIFTS.map(id => bigFourCard(id, state.lifts[id])).join('')}
     </div>
     <div class="section-label" style="margin-bottom:10px">Today's meals</div>
-    ${foodRow(state.meals[todayDate] || {})}`;
+    ${foodRow(state.meals[todayDate] || {}, todayDate)}`;
 }
 
 function resolveVariantSt(id, rawSt) {
@@ -215,8 +215,8 @@ function bigFourCard(id, rawSt) {
     </div>`;
 }
 
-function foodRow(dayMeals) {
-  const squares = nutrition.MEALS.map(m => {
+function foodRow(dayMeals, todayDate) {
+  const squares = nutrition.mealsForDay(todayDate).map(m => {
     const st = dayMeals[m.id];
     if (st === 'eaten') {
       return `<div style="

@@ -569,12 +569,11 @@ Meals    ●●○○○○        2 of 6 on plan
 Bites    🍪🍪🍪          3 today
 ─────────────────────────────────
 
-05:40  Pre-train shake + creatine                          [✓] [⚠] [✕]
-07:00  100g bread + tomato + 3 eggs                        [✓] [⚠] [✕]
-13:30  200g chicken + 160-180g potato/rice + 150-200g veg  [✓] [⚠] [✕]    ← prominent if it's near 13:30
-17:30  2 eggs                                              [✓] [⚠] [✕]
-20:30  1 yogurt + scoop whey + 30-50g berries + 25-30g nuts [✓] [⚠] [✕]
-21:30  Dark chocolate - 1-2 cubes                          [✓] [⚠] [✕]
+05:00  1 scoop MyProtein whey + 5g creatina              [✓] [⚠] [✕]   ← Mon–Sat only
+07:00  3 huevos grandes + tomate + plátano + manzana + sandía  [✓] [⚠] [✕]
+13:00  200g tofu Hacendado + 100g patatas/arroz + 150–200g veg [✓] [⚠] [✕]   ← Mon–Thu; merluza Fri–Sat; salmón Sun
+17:00  2 huevos grandes                                  [✓] [⚠] [✕]
+21:00  150g yogur proteínas + 1 scoop whey + frutos rojos + nueces + corn flakes  [✓] [⚠] [✕]
 
 ─────────────────────────────────
 [ 🍽️  Family meal ]    [ 🍪 Bite (×3 today) ]
@@ -1121,6 +1120,7 @@ Every meaningful design decision and why it was made. **Don't reverse without up
 | 42 | The variant and isTime changes were made mid-programme by explicit decision, with SPEC and code updated together | Avoids spec drift. Future readers should treat these as first-class design decisions, not workarounds. |
 | 43 | Meal plan updated per Fran (nutritionist) 28 May 2026 | No deficit detected — fat % rising. Reduced breakfast to 3 eggs, added afternoon protein snack (2 eggs / sardines), reduced yogurt dinner portion to 150–200ml + added whey scoop. Steps to increase daily. |
 | 44 | kcal target reduced from 2,050 to 1,800 per Fran (28 May 2026) | ISAK showed fat mass creeping up despite 83% adherence — deficit was not present. Fran prescribed a 250kcal/day reduction. Meal plan adjusted accordingly. |
+| 45 | Meal plan replaced (7 Jun 2026): tofu/merluza/salmon lunches, no dark chocolate, shake excluded Sunday | New plan: shake (Mon–Sat) + breakfast + lunch + 2-egg snack + yogurt-whey dinner. Lunch rotates: tofu Mon–Thu (~1,681 kcal), merluza Fri–Sat (~1,618 kcal), salmon Sunday (~1,891 kcal, accepted high day). `mealsForDay(isoDate)` in nutrition.js handles day-dependent meal list. |
 
 ---
 
